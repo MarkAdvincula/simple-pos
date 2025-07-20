@@ -9,12 +9,13 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import databaseService from '../src/services/database';
 
 const QRScreen = ({ route, navigation }) => {
   const [ loading, setLoading ] = useState(false);
-  const { total, method } = route.params;
+  const { total, method, cart } = route.params;
   const [qrImage, setQrImage] = useState();
-
+  const [paymentDetails, setPaymentDetails] = useState();
 
   useEffect( () => {
     loadQRImages();
@@ -46,6 +47,32 @@ const QRScreen = ({ route, navigation }) => {
     navigation.navigate('ConfigQR', {method});
   }
 
+  const confirmPayment = async (camera) => {
+    camera ? navigation.navigate('Camera', { total }) : navigation.navigate('Menu', { total })
+
+    try{
+      const transactionId = await databaseService.addTransaction(cart, method);
+      setPaymentDetails({
+        method: method,
+        total: totalAmount,
+        received: receivedAmount,
+        change: change,
+        status: 'success',
+        transactionId: transactionId
+      });
+    }catch(error){
+      setPaymentDetails({
+        method: method,
+        total: totalAmount,
+        received: receivedAmount,
+        change: change,
+        status: 'error',
+        error: error.message
+      });
+      console.error('Payment failed:', error)
+    }
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
@@ -65,16 +92,23 @@ const QRScreen = ({ route, navigation }) => {
         
         <Text style={styles.instruction}>Scan QR Code to Pay</Text>
         <Text style={styles.totalAmount}>₱{total}</Text>
-        
+        <TouchableOpacity
+                style={styles.completeButton}
+                onPress={() => confirmPayment(false)}
+                activeOpacity={0.8}
+              >
+                          <Ionicons name="cash" size={24} color="#ffffff" />
+
+                <Text style={styles.completeButtonText}>Complete Payment</Text>
+              </TouchableOpacity>
         <TouchableOpacity
           style={styles.cameraButton}
-          onPress={() => navigation.navigate('Camera', { total })}
+          onPress={() => confirmPayment(true)}
           activeOpacity={0.8}
         >
           <Ionicons name="camera" size={24} color="#ffffff" />
-          <Text style={styles.cameraButtonText}>Take Receipt Photo</Text>
+          <Text style={styles.cameraButtonText}>Take Receipt Photos</Text>
         </TouchableOpacity>
-        
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
@@ -153,6 +187,22 @@ const styles = StyleSheet.create({
   backButtonText: {
     color: '#ffffff',
     fontSize: 16,
+    fontWeight: 'bold',
+  },
+  completeButton: {
+    backgroundColor: '#16a34a',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 20,
+    display: 'flex',
+    flexDirection: 'row',
+    gap: 10
+    
+  },
+  completeButtonText: {
+    color: '#ffffff',
+    fontSize: 18,
     fontWeight: 'bold',
   },
 });

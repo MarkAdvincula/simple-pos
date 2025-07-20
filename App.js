@@ -7,6 +7,7 @@ import PaymentScreen from './screens/PaymentScreen';
 import QRScreen from './screens/QRScreen';
 import CameraScreen from './screens/CameraScreen';
 import QRConfiguration from './screens/QRConfiguration';
+import RecordsScreen from './screens/RecordsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -22,6 +23,7 @@ export default function App() {
         }}
       >
         <Stack.Screen name="Menu" component={MenuScreen} />
+        <Stack.Screen name="Records" component={RecordsScreen} />
         <Stack.Screen name="Payment" component={PaymentScreen} />
         <Stack.Screen name="QR" component={QRScreen} />
         <Stack.Screen name="ConfigQR" component={QRConfiguration} />

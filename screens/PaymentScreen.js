@@ -10,6 +10,8 @@ import {
   Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import databaseService from '../src/services/database'; // Import the singleton
+
 
 const PaymentScreen = ({ route, navigation }) => {
 
@@ -50,7 +52,7 @@ const PaymentScreen = ({ route, navigation }) => {
     setAmountReceived('');
   };
 
-  const handleCashPayment = () => {
+  const handleCashPayment = async () => {
     const receivedAmount = parseFloat(amountReceived);
     const totalAmount = parseFloat(total);
 
@@ -85,13 +87,30 @@ const PaymentScreen = ({ route, navigation }) => {
      * 003,001,Americano,120
      * 004,001,Cafe Latte, 150
      */
-    setPaymentDetails({
-      method: 'Cash',
-      total: totalAmount,
-      received: receivedAmount,
-      change: change
-    });
+    try{
+      const transactionId = await databaseService.addTransaction(cart, 'cash');
+      setPaymentDetails({
+        method: 'Cash',
+        total: totalAmount,
+        received: receivedAmount,
+        change: change,
+        status: 'success',
+        transactionId: transactionId
+      });
+    }catch(error){
+      setPaymentDetails({
+        method: 'Cash',
+        total: totalAmount,
+        received: receivedAmount,
+        change: change,
+        status: 'error',
+        error: error.message
+      });
+      console.error('Payment failed:', error)
+    }
+    
     setShowPaymentModal(true);
+    
   };
 
   const renderDenominations = () => {

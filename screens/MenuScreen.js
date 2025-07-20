@@ -9,7 +9,6 @@ import {
   Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-
 const { width } = Dimensions.get('window');
 
 const MenuScreen = ({ navigation }) => {
@@ -56,12 +55,21 @@ const MenuScreen = ({ navigation }) => {
     navigation.navigate('Payment', { cart, total: getTotalPrice() });
   };
 
+  const showSales = async () => {
+    navigation.navigate('Records');
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.mainContainer}>
         {/* Menu Section */}
         <ScrollView style={styles.menuSection} showsVerticalScrollIndicator={false}>
+          <View style={{display:'flex', flexDirection:'row', justifyContent:'space-evenly'}}>
           <Text style={styles.title}>Cecilia POS</Text>
+          <TouchableOpacity onPress={showSales}>
+          <Ionicons name="podium-outline" size={20} color="#ef4444" />
+          </TouchableOpacity>
+          </View>
           
           {Object.entries(menu).map(([category, items]) => (
             <View key={category} style={styles.categoryContainer}>
