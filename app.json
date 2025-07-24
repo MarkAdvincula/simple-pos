@@ -30,6 +30,15 @@
       "eas": {
         "projectId": "b376ab24-96be-4155-9ed6-bdbcd924ed6e"
       }
-    }
+    },
+    "plugins": [
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos.",
+          "savePhotosPermission": "Allow $(PRODUCT_NAME) to save photos."
+        }
+      ]
+    ]
   }
 }

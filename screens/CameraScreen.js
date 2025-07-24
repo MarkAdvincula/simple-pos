@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
+import * as MediaLibrary from 'expo-media-library';
 
 const CameraScreen = ({ route, navigation }) => {
   const [permission, requestPermission] = useCameraPermissions();
@@ -19,9 +20,15 @@ const CameraScreen = ({ route, navigation }) => {
     if (cameraRef.current) {
       try {
         const photo = await cameraRef.current.takePictureAsync();
+        const { status } = await MediaLibrary.requestPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission denied', 'Cannot save photo without permission');
+          return;
+        }
+        const asset = await MediaLibrary.saveToLibraryAsync(photo.uri);
         Alert.alert(
           'Success',
-          'Receipt photo captured successfully!',
+          'Receipt photo captured and saved to Gallery!',
           [
             {
               text: 'OK',
@@ -30,7 +37,7 @@ const CameraScreen = ({ route, navigation }) => {
           ]
         );
       } catch (error) {
-        Alert.alert('Error', 'Failed to capture photo');
+        Alert.alert('Error', `Failed to capture photo: ${error.message}`);
       }
     }
   };

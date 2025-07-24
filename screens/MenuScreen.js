@@ -27,6 +27,10 @@ const MenuScreen = ({ navigation }) => {
     ],
     'Non-coffee': [
       { name: 'Iced Tea', price: 100 }
+    ],
+    'Foods': [
+      { name: 'Sandwich', price: 180},
+      { name: 'Half Sandwich', price: 100}
     ]
   };
 
@@ -64,10 +68,13 @@ const MenuScreen = ({ navigation }) => {
       <View style={styles.mainContainer}>
         {/* Menu Section */}
         <ScrollView style={styles.menuSection} showsVerticalScrollIndicator={false}>
-          <View style={{display:'flex', flexDirection:'row', justifyContent:'space-evenly'}}>
+          <View style={{display:'flex', flexDirection:'row', justifyContent:'space-evenly', alignItems:'center',gap:2}}>
           <Text style={styles.title}>Cecilia POS</Text>
           <TouchableOpacity onPress={showSales}>
           <Ionicons name="podium-outline" size={20} color="#ef4444" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate("ConfigQR", '')}>
+          <Ionicons name="settings" size={20} color="gray" />
           </TouchableOpacity>
           </View>
           
@@ -172,7 +179,6 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
     textAlign: 'center',
-    marginBottom: 24,
     color: '#1f2937',
   },
   categoryContainer: {

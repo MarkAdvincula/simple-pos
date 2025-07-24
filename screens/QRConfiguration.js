@@ -43,7 +43,7 @@ const QRManagementScreen = ({ navigation, route }) => {
       setLoading(true);
       const gcashQR = await AsyncStorage.getItem('gcash_qr_image');
       const bpiQR = await AsyncStorage.getItem('bpi_qr_image');
-      
+
       setQrImages({
         Gcash: gcashQR,
         BPI: bpiQR
@@ -79,12 +79,12 @@ const QRManagementScreen = ({ navigation, route }) => {
       setLoading(true);
       const storageKey = paymentType === 'Gcash' ? 'gcash_qr_image' : 'bpi_qr_image';
       await AsyncStorage.setItem(storageKey, uri);
-      
+
       setQrImages(prev => ({
         ...prev,
         [paymentType]: uri
       }));
-      
+
       Alert.alert('Success', `${paymentType} QR code updated successfully!`);
     } catch (error) {
       console.log('Error saving QR image:', error);
@@ -108,12 +108,12 @@ const QRManagementScreen = ({ navigation, route }) => {
               setLoading(true);
               const storageKey = paymentType === 'Gcash' ? 'gcash_qr_image' : 'bpi_qr_image';
               await AsyncStorage.removeItem(storageKey);
-              
+
               setQrImages(prev => ({
                 ...prev,
                 [paymentType]: null
               }));
-              
+
               Alert.alert('Success', `${paymentType} QR code removed successfully!`);
             } catch (error) {
               console.log('Error removing QR image:', error);
@@ -130,7 +130,7 @@ const QRManagementScreen = ({ navigation, route }) => {
   const QRCard = ({ paymentType, qrUri }) => (
     <View style={styles.qrCard}>
       <Text style={styles.cardTitle}>{paymentType} QR Code</Text>
-      
+
       <View style={styles.qrPreview}>
         {qrUri ? (
           <Image source={{ uri: qrUri }} style={styles.previewImage} />
@@ -141,7 +141,7 @@ const QRManagementScreen = ({ navigation, route }) => {
           </View>
         )}
       </View>
-      
+
       <View style={styles.cardActions}>
         <TouchableOpacity
           style={styles.uploadButton}
@@ -153,7 +153,7 @@ const QRManagementScreen = ({ navigation, route }) => {
             {qrUri ? 'Update' : 'Upload'}
           </Text>
         </TouchableOpacity>
-        
+
         {qrUri && (
           <TouchableOpacity
             style={styles.removeButton}
@@ -173,31 +173,42 @@ const QRManagementScreen = ({ navigation, route }) => {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => navigation.goBack({method})}
+          onPress={() => navigation.goBack({ method })}
           activeOpacity={0.8}
         >
           <Ionicons name="chevron-back" size={24} color="#1f2937" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>QR Code Management</Text>
       </View>
-      
+
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.subtitle}>
           Upload and manage your payment QR codes
         </Text>
-        
+
         {loading && (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#2563eb" />
             <Text style={styles.loadingText}>Processing...</Text>
           </View>
         )}
-        { method === "Gcash" ? <QRCard paymentType="Gcash" qrUri={qrImages.Gcash} /> 
-        :
-        <QRCard paymentType="BPI" qrUri={qrImages.BPI} /> }
-        
-        
-        
+        {!method && (
+          <>
+            <QRCard paymentType="Gcash" qrUri={qrImages.Gcash} />
+            <QRCard paymentType="BPI" qrUri={qrImages.BPI} />
+          </>
+        )}
+
+        {method === "Gcash" && (
+          <QRCard paymentType="Gcash" qrUri={qrImages.Gcash} />
+        )}
+
+        {method === "BPI" && (
+          <QRCard paymentType="BPI" qrUri={qrImages.BPI} />
+        )}
+
+
+
         <View style={styles.infoContainer}>
           <Ionicons name="information-circle" size={20} color="#6b7280" />
           <Text style={styles.infoText}>
