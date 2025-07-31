@@ -13,20 +13,17 @@ import { Ionicons } from '@expo/vector-icons';
 const MenuScreen = ({ navigation }) => {
   const [cart, setCart] = useState([]);
   const [screenData, setScreenData] = useState(Dimensions.get('window'));
+  const isPhone = screenData.width < 768;
+  const isSmallPhone = screenData.width < 375;
 
-  // Update screen dimensions on orientation change
   useEffect(() => {
-    const onChange = (result) => {
+    const subscription = Dimensions.addEventListener('change', (result) => {
       setScreenData(result.window);
-    };
-
-    const subscription = Dimensions.addEventListener('change', onChange);
+    });
     return () => subscription?.remove();
   }, []);
 
-  // Determine if device is phone-sized
-  const isPhone = screenData.width < 768; // Tablets typically > 768px
-  const isSmallPhone = screenData.width < 375;
+
 
   const menu = {
     'Espresso': [
@@ -66,6 +63,8 @@ const MenuScreen = ({ navigation }) => {
     setCart(cart.filter(item => item.name !== itemName));
   };
 
+  const clearCart = () => setCart([]);
+
   const getTotalPrice = () => {
     return cart.reduce((total, item) => total + (item.price * item.quantity), 0);
   };
@@ -74,7 +73,7 @@ const MenuScreen = ({ navigation }) => {
     navigation.navigate('Payment', { cart, total: getTotalPrice() });
   };
 
-  const showSales = async () => {
+  const showSales = () => {
     navigation.navigate('Records');
   };
 
@@ -96,8 +95,8 @@ const MenuScreen = ({ navigation }) => {
     menuItem: {
       backgroundColor: '#ffffff',
       width: isPhone ?
-        (screenData.width - 40) / 2 - 8 : // Phone: 2 columns
-        screenData.width * 0.15, // Tablet: original size
+        (screenData.width - 40) / 2 - 8 :
+        screenData.width * 0.15,
       padding: isSmallPhone ? 8 : 12,
       borderRadius: 12,
       marginBottom: 8,
@@ -112,7 +111,7 @@ const MenuScreen = ({ navigation }) => {
     },
     cartSection: {
       minWidth: isPhone ? '100%' : 350,
-      height: isPhone ? '20%' : '100%',
+      height: isPhone ? (cart.length > 0 ? '40%' : '20%') : '100%',
       backgroundColor: '#ffffff',
       padding: 16,
       borderLeftWidth: isPhone ? 0 : 2,
@@ -122,7 +121,6 @@ const MenuScreen = ({ navigation }) => {
     title: {
       fontSize: isSmallPhone ? 20 : 28,
       fontWeight: 'bold',
-      textAlign: 'center',
       color: '#1f2937',
     },
     categoryTitle: {
@@ -138,38 +136,39 @@ const MenuScreen = ({ navigation }) => {
       marginBottom: 8,
     },
     itemPrice: {
-      fontSize: isSmallPhone ? 3 : 10,
+      fontSize: isSmallPhone ? 8 : 10, // Fixed from 3 to 8
       fontWeight: 'bold',
       color: '#2563eb',
+    },
+    checkoutButton: {
+      backgroundColor: '#2563eb',
+      padding: isPhone ? 8 : 16,
+      borderRadius: 8,
+      height: isPhone ? 40 : 'auto',
+      justifyContent: 'center',
+      alignItems: 'center',
     },
     checkoutButtonText: {
       color: '#ffffff',
       fontSize: isPhone ? 12 : 18,
       fontWeight: 'bold',
     },
-    checkoutButton: {
-      backgroundColor: '#2563eb',
-      padding: isPhone ? 8 : 16,
-      borderRadius: 8,
-      height: isPhone ? 40 : 80,
-      justifyContent: 'center'
-    },
     clearButton: {
-      width: 30,
-      height: isPhone ? 20 : 40,
       backgroundColor: '#dc2626',
-      padding: isPhone ? 4 : 8,
+      padding: isPhone ? 4 : 12,
       borderRadius: 8,
       alignItems: 'center',
+      justifyContent: 'center',
     },
     cartFooter: {
       borderTopWidth: 2,
       borderTopColor: '#e5e7eb',
       paddingTop: 16,
-      backgroundColor: 'white',
-      gap: 20,
+      backgroundColor: '#ffffff',
+      gap: isPhone ? 10 : 20,
       flexDirection: isPhone ? 'row' : 'column',
-      justifyContent: 'space-between'
+      justifyContent: 'space-between',
+      alignItems: isPhone ? 'center' : 'stretch',
     },
   });
 
@@ -183,7 +182,7 @@ const MenuScreen = ({ navigation }) => {
             <TouchableOpacity onPress={showSales}>
               <Ionicons name="podium-outline" size={20} color="#ef4444" />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => navigation.navigate("ConfigQR", '')}>
+            <TouchableOpacity onPress={() => navigation.navigate('ConfigQR')}>
               <Ionicons name="settings" size={20} color="gray" />
             </TouchableOpacity>
           </View>
@@ -194,7 +193,7 @@ const MenuScreen = ({ navigation }) => {
               <View style={dynamicStyles.itemGrid}>
                 {items.map((item, index) => (
                   <TouchableOpacity
-                    key={index}
+                    key={`${category}-${index}`}
                     style={dynamicStyles.menuItem}
                     onPress={() => addToCart(item)}
                     activeOpacity={0.7}
@@ -209,30 +208,34 @@ const MenuScreen = ({ navigation }) => {
         </ScrollView>
 
         {/* Cart Section */}
-        <View style={[dynamicStyles.cartSection, isPhone && cart.length > 0 ? { height: '40%' } : {}]}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
+        <View style={dynamicStyles.cartSection}>
+          <View style={styles.cartHeader}>
             <Text style={styles.cartTitle}>Order Summary</Text>
-            {isPhone && cart.length > 0 && <TouchableOpacity
-              style={dynamicStyles.clearButton}
-              onPress={() => setCart([])}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="trash-bin-sharp" size={10} color="white" />
-            </TouchableOpacity>}
+            {isPhone && cart.length > 0 && (
+              <TouchableOpacity
+                style={[dynamicStyles.clearButton, { width: 30, height: 20 }]}
+                onPress={clearCart}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="trash-bin-sharp" size={10} color="white" />
+              </TouchableOpacity>
+            )}
           </View>
+
           <View style={styles.cartContent}>
             <ScrollView
               style={styles.cartItems}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={[
                 styles.cartItemsContent,
-                isPhone ? { flexDirection: 'column-reverse' } : {}
-              ]}>
+                isPhone && { flexDirection: 'column-reverse' }
+              ]}
+            >
               {cart.length === 0 ? (
                 <Text style={styles.emptyCart}>No items in cart</Text>
               ) : (
                 cart.map((item, index) => (
-                  <View key={index} style={styles.cartItem}>
+                  <View key={`cart-${index}`} style={styles.cartItem}>
                     <View style={styles.cartItemDetails}>
                       <Text style={styles.cartItemName}>{item.name}</Text>
                       <Text style={styles.cartItemQuantity}>
@@ -252,28 +255,24 @@ const MenuScreen = ({ navigation }) => {
                 ))
               )}
             </ScrollView>
+
+            {/* Clear button for tablets */}
             {!isPhone && cart.length > 0 && (
               <TouchableOpacity
-                style={{
-                  backgroundColor: '#dc2626',
-                  padding: 12,
-                  borderRadius: 8,
-                  alignItems: 'center',
-                  marginVertical: 10,
-                }}
-                onPress={() => setCart([])}
+                style={[dynamicStyles.clearButton, { marginVertical: 10 }]}
+                onPress={clearCart}
                 activeOpacity={0.8}
               >
-                <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>
-                  Clear Cart
-                </Text>
+                <Text style={styles.clearButtonText}>Clear Cart</Text>
               </TouchableOpacity>
             )}
+
+            {/* Cart Footer */}
             {cart.length > 0 && (
               <View style={dynamicStyles.cartFooter}>
                 <View style={styles.totalContainer}>
                   <Text style={styles.totalLabel}>Total:</Text>
-                  <Text style={styles.totalAmount}> ₱{getTotalPrice()}</Text>
+                  <Text style={styles.totalAmount}>₱{getTotalPrice()}</Text>
                 </View>
                 <TouchableOpacity
                   style={dynamicStyles.checkoutButton}
@@ -297,19 +296,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#f3f4f6',
   },
   headerContainer: {
-    display: 'flex',
     flexDirection: 'row',
     justifyContent: 'space-evenly',
     alignItems: 'center',
-    gap: 2,
+    marginBottom: 20,
   },
   categoryContainer: {
     marginBottom: 24,
   },
+  cartHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
   cartTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 16,
     color: '#1f2937',
   },
   cartContent: {
@@ -365,7 +368,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
   },
   totalLabel: {
     fontSize: 18,
@@ -377,9 +379,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#2563eb',
   },
-
-
-
+  clearButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
 });
 
 export default MenuScreen;

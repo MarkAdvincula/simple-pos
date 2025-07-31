@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Alert,
   TextInput,
   Modal,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import databaseService from '../src/services/database'; // Import the singleton
@@ -15,14 +16,35 @@ import databaseService from '../src/services/database'; // Import the singleton
 
 const PaymentScreen = ({ route, navigation }) => {
 
-  const {total, cart } = route.params;
+  const { total, cart } = route.params;
   const [showCashKeypad, setShowCashKeypad] = useState(false);
   const [amountReceived, setAmountReceived] = useState('');
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentDetails, setPaymentDetails] = useState({});
+  const [screenData, setScreenData] = useState(Dimensions.get('window'));
+  const isPhone = screenData.width < 768;
+  const isSmallPhone = screenData.width < 375;
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', (result) => {
+      setScreenData(result.window);
+    });
+    return () => subscription?.remove();
+  }, []);
 
   console.log(cart);
 
+  const dynamicStyles = StyleSheet.create({
+    denominationButton: {
+      width: '23%',
+      backgroundColor: '#16a34a',
+      padding: 16,
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 12,
+      minHeight: isPhone ? 40 : 100,
+    },
+   })
   const handlePayment = (method) => {
     if (method === 'Gcash' || method === 'BPI') {
       navigation.navigate('QR', { total, method, cart });
@@ -53,41 +75,20 @@ const PaymentScreen = ({ route, navigation }) => {
   };
 
   const handleCashPayment = async () => {
-    const receivedAmount = parseFloat(amountReceived);
+    const originalReceivedAmount = parseFloat(amountReceived) || 0;
     const totalAmount = parseFloat(total);
-
-    if (isNaN(receivedAmount) || receivedAmount <= 0) {
-      Alert.alert('Invalid Amount', 'Please enter a valid amount.');
-      return;
-    }
-
-    if (receivedAmount < totalAmount) {
+    
+    // If receivedAmount === 0, set it to totalAmount for exact payment
+    const receivedAmount = originalReceivedAmount === 0 ? totalAmount : originalReceivedAmount;
+  
+    if (originalReceivedAmount > 0 && originalReceivedAmount < totalAmount) {
       Alert.alert('Insufficient Amount', 'The amount received is less than the total.');
       return;
     }
-
+  
     const change = receivedAmount - totalAmount;
-
-    /** Store data into database here for history/logging
-     * History Log will look like:
-     * Date, Time, Total (collapsed)
-     * Date: July 7, 1:50PM
-     * Items: 
-     * Americano x3 (P360), 
-     * Cafe Latte x1 (P150)
-     * Total: P510
-     * 
-     * Database stored into table will look like:
-     * transactions_tbl: id, total price , 07/07/2025
-     * items_sold_tbl: id, transactionID, item, price
-     * ex:
-     * transactions_tbl: 001, 410, 07/07/2025
-     * items_sold_tbl: 001, 001, Americano, 120
-     * 002,001,Americano,120
-     * 003,001,Americano,120
-     * 004,001,Cafe Latte, 150
-     */
-    try{
+  
+    try {
       const transactionId = await databaseService.addTransaction(cart, 'cash');
       setPaymentDetails({
         method: 'Cash',
@@ -97,7 +98,7 @@ const PaymentScreen = ({ route, navigation }) => {
         status: 'success',
         transactionId: transactionId
       });
-    }catch(error){
+    } catch (error) {
       setPaymentDetails({
         method: 'Cash',
         total: totalAmount,
@@ -106,11 +107,10 @@ const PaymentScreen = ({ route, navigation }) => {
         status: 'error',
         error: error.message
       });
-      console.error('Payment failed:', error)
+      console.error('Payment failed:', error);
     }
-    
+  
     setShowPaymentModal(true);
-    
   };
 
   const renderDenominations = () => {
@@ -121,6 +121,7 @@ const PaymentScreen = ({ route, navigation }) => {
       { value: 20, label: '₱20' },
       { value: 50, label: '₱50' },
       { value: 100, label: '₱100' },
+      { value: 200, label: '₱200'},
       { value: 500, label: '₱500' },
       { value: 1000, label: '₱1000' },
     ];
@@ -132,7 +133,7 @@ const PaymentScreen = ({ route, navigation }) => {
           {denominations.map((denomination) => (
             <TouchableOpacity
               key={denomination.value}
-              style={styles.denominationButton}
+              style={dynamicStyles.denominationButton}
               onPress={() => handleDenominationPress(denomination.value)}
               activeOpacity={0.7}
             >
@@ -168,31 +169,31 @@ const PaymentScreen = ({ route, navigation }) => {
             <Ionicons name="checkmark-circle" size={60} color="#16a34a" />
             <Text style={styles.modalTitle}>Payment Completed!</Text>
           </View>
-          
+
           <View style={styles.modalBody}>
             <View style={styles.paymentDetailRow}>
               <Text style={styles.paymentDetailLabel}>Payment Method:</Text>
               <Text style={styles.paymentDetailValue}>{paymentDetails.method}</Text>
             </View>
-            
+
             <View style={styles.paymentDetailRow}>
               <Text style={styles.paymentDetailLabel}>Total:</Text>
               <Text style={styles.paymentDetailValue}>₱{paymentDetails.total?.toFixed(2)}</Text>
             </View>
-            
+
             <View style={styles.paymentDetailRow}>
               <Text style={styles.paymentDetailLabel}>Received:</Text>
               <Text style={styles.paymentDetailValue}>₱{paymentDetails.received?.toFixed(2)}</Text>
             </View>
-            
+
             <View style={styles.paymentDetailRow}>
               <Text style={styles.paymentDetailLabel}>Change:</Text>
               <Text style={styles.changeAmount}>₱{paymentDetails.change?.toFixed(2)}</Text>
             </View>
-            
+
             <Text style={styles.transactionComplete}>Transaction completed!</Text>
           </View>
-          
+
           <TouchableOpacity
             style={styles.modalButton}
             onPress={() => {
@@ -213,7 +214,7 @@ const PaymentScreen = ({ route, navigation }) => {
       <SafeAreaView style={styles.container}>
         <View style={styles.content}>
           <Text style={styles.title}>Cash Payment</Text>
-          
+
           <View style={styles.cashPaymentContainer}>
             <View style={styles.totalContainer}>
               <Text style={styles.totalText}>Total: ₱{total}</Text>
@@ -256,17 +257,19 @@ const PaymentScreen = ({ route, navigation }) => {
               >
                 <Text style={styles.backButtonText}>Back</Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity
                 style={[
                   styles.completeButton,
-                  receivedAmount < totalAmount && styles.disabledButton
+                  receivedAmount > 0 && receivedAmount < totalAmount && styles.disabledButton
                 ]}
                 onPress={handleCashPayment}
-                disabled={receivedAmount < totalAmount}
+                disabled={receivedAmount > 0 && receivedAmount < totalAmount}
                 activeOpacity={0.8}
               >
-                <Text style={styles.completeButtonText}>Complete Payment</Text>
+                <Text style={styles.completeButtonText}>
+                  {receivedAmount === 0 ? 'Exact Payment' : 'Complete Payment'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -283,7 +286,7 @@ const PaymentScreen = ({ route, navigation }) => {
         <View style={styles.totalContainer}>
           <Text style={styles.totalText}>Total: ₱{total}</Text>
         </View>
-        
+
         <View style={styles.paymentOptions}>
           <TouchableOpacity
             style={[styles.paymentButton, { backgroundColor: '#2563eb' }]}
@@ -293,7 +296,7 @@ const PaymentScreen = ({ route, navigation }) => {
             <Ionicons name="qr-code" size={32} color="#ffffff" />
             <Text style={styles.paymentButtonText}>GCash</Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity
             style={[styles.paymentButton, { backgroundColor: '#dc2626' }]}
             onPress={() => handlePayment('BPI')}
@@ -302,7 +305,7 @@ const PaymentScreen = ({ route, navigation }) => {
             <Ionicons name="card" size={32} color="#ffffff" />
             <Text style={styles.paymentButtonText}>BPI</Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity
             style={[styles.paymentButton, { backgroundColor: '#16a34a' }]}
             onPress={() => handlePayment('Cash')}
@@ -312,7 +315,7 @@ const PaymentScreen = ({ route, navigation }) => {
             <Text style={styles.paymentButtonText}>Cash</Text>
           </TouchableOpacity>
         </View>
-        
+
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
@@ -462,16 +465,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     marginBottom: 16,
-  },
-  denominationButton: {
-    width: '23%',
-    backgroundColor: '#16a34a',
-    padding: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-    minHeight: 60,
   },
   denominationButtonText: {
     color: '#ffffff',
