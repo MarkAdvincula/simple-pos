@@ -23,11 +23,9 @@ class DatabaseService {
 
     async _initDatabase() {
         try {
-            console.log('Initializing database...');
             this.db = await SQLite.openDatabaseAsync('pos.db');
             await this.createTables();
             this.initialized = true;
-            console.log('Database initialized successfully');
             return this.db;
         } catch (error) {
             console.error('Failed to initialize database:', error);
@@ -66,7 +64,6 @@ class DatabaseService {
                 );
             `);
 
-            console.log('Tables created successfully');
         } catch (error) {
             console.error('Error creating tables:', error);
             throw error;
@@ -80,7 +77,6 @@ class DatabaseService {
         const datetime = new Date().toISOString();
 
         try {
-            console.log('Adding transaction...', { totalAmount, paymentMethod });
 
             // Start transaction
             const result = await this.db.runAsync(
@@ -89,7 +85,6 @@ class DatabaseService {
             );
 
             const transactionId = result.lastInsertRowId;
-            console.log('Transaction created with ID:', transactionId);
 
             // Add items
             for (const item of items) {
@@ -100,7 +95,6 @@ class DatabaseService {
                 );
             }
 
-            console.log('Transaction and items added successfully');
             return transactionId;
         } catch (error) {
             console.error('Error adding transaction:', error);
@@ -112,7 +106,6 @@ class DatabaseService {
         await this.init(); // Ensure database is initialized
 
         try {
-            console.log('Fetching transactions...');
             
             const transactions = await this.db.getAllAsync(`
                 SELECT 
@@ -125,7 +118,6 @@ class DatabaseService {
                 ORDER BY t.transaction_datetime DESC
             `);
 
-            console.log('Found transactions:', transactions.length);
 
             // Get items for each transaction
             for (const transaction of transactions) {

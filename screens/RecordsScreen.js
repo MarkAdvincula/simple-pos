@@ -5,6 +5,9 @@ import { Ionicons } from '@expo/vector-icons';
 import databaseService from '../src/services/database';
 
 const RecordsScreen = ({ navigation }) => {
+
+    const LIMIT_SALES_FOR_PERFORMANCE = 1000;
+
     const [items, setItems] = useState([]);
     const [expandedItems, setExpandedItems] = useState({});
     const [totalSummary, setTotalSummary] = useState({
@@ -58,7 +61,7 @@ const RecordsScreen = ({ navigation }) => {
             // For overall summary, you might want to add a method to your database service
             // For now, we'll use a lighter approach
             const recentTransactions = await databaseService.getTransactions();
-            const limitedTransactions = recentTransactions.slice(0, 100); // Limit for performance
+            const limitedTransactions = recentTransactions.slice(0, LIMIT_SALES_FOR_PERFORMANCE); // Limit for performance
             
             const totalSales = limitedTransactions.reduce((sum, transaction) => 
                 sum + parseFloat(transaction.total_amount), 0
@@ -80,7 +83,7 @@ const RecordsScreen = ({ navigation }) => {
         try {
             // Load a limited set for performance
             const recentTransactions = await databaseService.getTransactions();
-            const limitedTransactions = recentTransactions.slice(0, 200); // Limit dataset
+            const limitedTransactions = recentTransactions.slice(0, LIMIT_SALES_FOR_PERFORMANCE); // Limit dataset
             
             const salesRanking = calculateTopSales(limitedTransactions);
             setTopSales(salesRanking);
