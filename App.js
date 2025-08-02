@@ -19,7 +19,7 @@ export default function App() {
         initialRouteName="Menu"
         screenOptions={{
           headerShown: false,
-          animation: 'slide_from_right',
+          animation: 'none',
         }}
       >
         <Stack.Screen name="Menu" component={MenuScreen} />

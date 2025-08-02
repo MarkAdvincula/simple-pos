@@ -140,14 +140,15 @@ const PaymentScreen = ({ route, navigation }) => {
               <Text style={styles.denominationButtonText}>{denomination.label}</Text>
             </TouchableOpacity>
           ))}
-        </View>
-        <TouchableOpacity
+          <TouchableOpacity
           style={styles.clearButton}
           onPress={handleClearAmount}
           activeOpacity={0.7}
         >
           <Text style={styles.clearButtonText}>Clear All</Text>
         </TouchableOpacity>
+        </View>
+        
       </View>
     );
   };
@@ -476,7 +477,9 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 8,
     alignItems: 'center',
+    justifyContent:'center',
     marginBottom: 8,
+    maxWidth: 140,
   },
   clearButtonText: {
     color: '#ffffff',
