@@ -20,7 +20,7 @@ const QRManagementScreen = ({ navigation, route }) => {
     BPI: null
   });
   const [loading, setLoading] = useState(false);
-  const { method } = route.params;
+  const { method } = route.params || {};
 
   useEffect(() => {
     loadQRImages();
@@ -206,8 +206,9 @@ const QRManagementScreen = ({ navigation, route }) => {
         {method === "BPI" && (
           <QRCard paymentType="BPI" qrUri={qrImages.BPI} />
         )}
-
-
+        <TouchableOpacity onPress={()=>navigation.navigate('Maintenance')}>
+          <Ionicons name="hammer-outline" size={20} color="#6b7280" />
+        </TouchableOpacity>
 
         <View style={styles.infoContainer}>
           <Ionicons name="information-circle" size={20} color="#6b7280" />
@@ -215,6 +216,7 @@ const QRManagementScreen = ({ navigation, route }) => {
             QR codes are stored locally on your device. Make sure to backup your QR codes regularly.
           </Text>
         </View>
+
       </ScrollView>
     </SafeAreaView>
   );

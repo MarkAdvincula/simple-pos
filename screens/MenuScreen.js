@@ -40,9 +40,14 @@ const MenuScreen = ({ navigation }) => {
       { name: 'Iced Tea', price: 100 }
     ],
     'Foods': [
-      { name: 'Sandwich', price: 180 },
+      { name: 'Sandwiches', price: 180 },
       { name: 'Half Sandwich', price: 99 },
       { name: 'Chicken Pesto', price: 199 }
+    ],
+    'Test 1': [
+      {
+        name: 'Test', price: 1
+      }
     ]
   };
 
@@ -75,6 +80,9 @@ const MenuScreen = ({ navigation }) => {
 
   const showSales = () => {
     navigation.navigate('Records');
+  };
+  const showPrinters = () => {
+    navigation.navigate('Printers');
   };
 
   // Dynamic styles based on screen size
@@ -182,6 +190,10 @@ const MenuScreen = ({ navigation }) => {
             <TouchableOpacity onPress={showSales}>
               <Ionicons name="podium-outline" size={20} color="#ef4444" />
             </TouchableOpacity>
+            <TouchableOpacity onPress={showPrinters}>
+              <Ionicons name="printer" size={20} color="#ef4444" />
+            </TouchableOpacity>
+            
             <TouchableOpacity onPress={() => navigation.navigate('ConfigQR')}>
               <Ionicons name="settings" size={20} color="gray" />
             </TouchableOpacity>
