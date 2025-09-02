@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import MenuScreen from './screens/MenuScreen';
 import PaymentScreen from './screens/PaymentScreen';
 import QRScreen from './screens/QRScreen';
@@ -10,13 +11,17 @@ import QRConfiguration from './screens/QRConfiguration';
 import RecordsScreen from './screens/RecordsScreen';
 import MaintenanceScreen from './screens/MaintenanceScreen';
 import PrintersScreen from './screens/PrintersScreen';
+import { Dimensions } from 'react-native';
+import { ScreenProvider, useScreen } from './src/contexts/ScreenContext';
 
 
 const Stack = createNativeStackNavigator();
 
 export default function App() {
+
   return (
-    <NavigationContainer>
+    <ScreenProvider>
+      <NavigationContainer>
       <StatusBar style="dark" />
       <Stack.Navigator 
         initialRouteName="Menu"
@@ -34,6 +39,7 @@ export default function App() {
         <Stack.Screen name="ConfigQR" component={QRConfiguration} />
         <Stack.Screen name="Camera" component={CameraScreen} />
       </Stack.Navigator>
-    </NavigationContainer>
+     </NavigationContainer>
+    </ScreenProvider>
   );
 }
