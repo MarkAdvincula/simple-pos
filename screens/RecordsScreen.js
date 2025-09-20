@@ -1,8 +1,10 @@
-import { StyleSheet, Text, TouchableOpacity, View, ScrollView, FlatList } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity, View, ScrollView, FlatList, Modal, Alert } from 'react-native'
 import React, { useEffect, useState, useMemo, useCallback } from 'react'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import databaseService from '../src/services/database';
+import exportService from '../src/services/exportService';
 
 const RecordsScreen = ({ navigation }) => {
 
@@ -20,15 +22,85 @@ const RecordsScreen = ({ navigation }) => {
     const [page, setPage] = useState(1);
     const [hasMoreData, setHasMoreData] = useState(true);
 
+    // Date filter states
+    const [dateFilter, setDateFilter] = useState('all'); // 'all', 'today', 'week', 'month', 'custom'
+    const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+    const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+    const [customStartDate, setCustomStartDate] = useState(new Date());
+    const [customEndDate, setCustomEndDate] = useState(new Date());
+    const [showDateFilterModal, setShowDateFilterModal] = useState(false);
+
+    // Export states
+    const [isExporting, setIsExporting] = useState(false);
+    const [showExportModal, setShowExportModal] = useState(false);
+
     const ITEMS_PER_PAGE = 20; // Pagination for better performance
 
     useEffect(() => {
         loadInitialData();
-        
+
         // Add focus listener to refresh data when screen comes into focus
         const unsubscribe = navigation.addListener('focus', loadInitialData);
         return unsubscribe;
     }, [navigation]);
+
+    // Reload data when date filter changes
+    useEffect(() => {
+        if (!loading) {
+            loadInitialData();
+        }
+    }, [dateFilter, customStartDate, customEndDate]);
+
+    // Date filter helper functions
+    const getDateRange = useCallback(() => {
+        const now = new Date();
+        let startDate, endDate;
+
+        switch (dateFilter) {
+            case 'today':
+                startDate = new Date(now.setHours(0, 0, 0, 0));
+                endDate = new Date(now.setHours(23, 59, 59, 999));
+                break;
+            case 'week':
+                const startOfWeek = new Date(now);
+                startOfWeek.setDate(now.getDate() - now.getDay());
+                startOfWeek.setHours(0, 0, 0, 0);
+                const endOfWeek = new Date(startOfWeek);
+                endOfWeek.setDate(startOfWeek.getDate() + 6);
+                endOfWeek.setHours(23, 59, 59, 999);
+                startDate = startOfWeek;
+                endDate = endOfWeek;
+                break;
+            case 'month':
+                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+                break;
+            case 'custom':
+                startDate = new Date(customStartDate);
+                startDate.setHours(0, 0, 0, 0);
+                endDate = new Date(customEndDate);
+                endDate.setHours(23, 59, 59, 999);
+                break;
+            default:
+                return null;
+        }
+
+        return { startDate, endDate };
+    }, [dateFilter, customStartDate, customEndDate]);
+
+    const filterTransactionsByDate = useCallback((transactions) => {
+        if (dateFilter === 'all') return transactions;
+
+        const dateRange = getDateRange();
+        if (!dateRange) return transactions;
+
+        const { startDate, endDate } = dateRange;
+
+        return transactions.filter(transaction => {
+            const transactionDate = new Date(transaction.transaction_datetime);
+            return transactionDate >= startDate && transactionDate <= endDate;
+        });
+    }, [dateFilter, getDateRange]);
 
     const loadInitialData = async () => {
         try {
@@ -53,22 +125,17 @@ const RecordsScreen = ({ navigation }) => {
 
     const loadSummaryData = async () => {
         try {
-            // Get summary without loading all transaction details
-            const summary = await databaseService.getDailySummary(
-                new Date().toISOString().split('T')[0]
-            );
-            
-            // For overall summary, you might want to add a method to your database service
-            // For now, we'll use a lighter approach
-            const recentTransactions = await databaseService.getTransactions();
-            const limitedTransactions = recentTransactions.slice(0, LIMIT_SALES_FOR_PERFORMANCE); // Limit for performance
-            
-            const totalSales = limitedTransactions.reduce((sum, transaction) => 
+            // Get all transactions and apply date filter
+            const allTransactions = await databaseService.getTransactions();
+            const filteredTransactions = filterTransactionsByDate(allTransactions);
+            const limitedTransactions = filteredTransactions.slice(0, LIMIT_SALES_FOR_PERFORMANCE); // Limit for performance
+
+            const totalSales = limitedTransactions.reduce((sum, transaction) =>
                 sum + parseFloat(transaction.total_amount), 0
             );
-            const averageSale = limitedTransactions.length > 0 ? 
+            const averageSale = limitedTransactions.length > 0 ?
                 totalSales / limitedTransactions.length : 0;
-            
+
             setTotalSummary({
                 total_transactions: limitedTransactions.length,
                 total_sales: totalSales,
@@ -81,10 +148,11 @@ const RecordsScreen = ({ navigation }) => {
 
     const loadTopSales = async () => {
         try {
-            // Load a limited set for performance
-            const recentTransactions = await databaseService.getTransactions();
-            const limitedTransactions = recentTransactions.slice(0, LIMIT_SALES_FOR_PERFORMANCE); // Limit dataset
-            
+            // Load a limited set for performance and apply date filter
+            const allTransactions = await databaseService.getTransactions();
+            const filteredTransactions = filterTransactionsByDate(allTransactions);
+            const limitedTransactions = filteredTransactions.slice(0, LIMIT_SALES_FOR_PERFORMANCE); // Limit dataset
+
             const salesRanking = calculateTopSales(limitedTransactions);
             setTopSales(salesRanking);
         } catch (error) {
@@ -95,26 +163,27 @@ const RecordsScreen = ({ navigation }) => {
     const loadTransactions = async (pageNum = 1, isInitial = false) => {
         try {
             const allTransactions = await databaseService.getTransactions();
-            
-            // Implement client-side pagination
+            const filteredTransactions = filterTransactionsByDate(allTransactions);
+
+            // Implement client-side pagination on filtered data
             const startIndex = (pageNum - 1) * ITEMS_PER_PAGE;
             const endIndex = startIndex + ITEMS_PER_PAGE;
-            const pageTransactions = allTransactions.slice(startIndex, endIndex);
-            
+            const pageTransactions = filteredTransactions.slice(startIndex, endIndex);
+
             const formattedTransactions = pageTransactions.map(transaction => ({
                 ...transaction,
                 transaction_datetime: new Date(transaction.transaction_datetime)
             }));
-            
+
             if (isInitial) {
                 setItems(formattedTransactions);
             } else {
                 setItems(prev => [...prev, ...formattedTransactions]);
             }
-            
-            setHasMoreData(endIndex < allTransactions.length);
-            console.log(`Loaded page ${pageNum}: ${formattedTransactions.length} transactions`);
-            
+
+            setHasMoreData(endIndex < filteredTransactions.length);
+            console.log(`Loaded page ${pageNum}: ${formattedTransactions.length} transactions (filtered)`);
+
         } catch (error) {
             console.error('Error loading transactions:', error);
         }
@@ -307,10 +376,10 @@ const RecordsScreen = ({ navigation }) => {
 
     const renderFooter = useCallback(() => {
         if (!hasMoreData) return null;
-        
+
         return (
-            <TouchableOpacity 
-                style={styles.loadMoreButton} 
+            <TouchableOpacity
+                style={styles.loadMoreButton}
                 onPress={loadMoreTransactions}
                 disabled={loading}
             >
@@ -320,6 +389,101 @@ const RecordsScreen = ({ navigation }) => {
             </TouchableOpacity>
         );
     }, [hasMoreData, loading, loadMoreTransactions]);
+
+    // Date filter functions
+    const getFilterDisplayText = useCallback(() => {
+        switch (dateFilter) {
+            case 'today':
+                return 'Today';
+            case 'week':
+                return 'This Week';
+            case 'month':
+                return 'This Month';
+            case 'custom':
+                return `${customStartDate.toLocaleDateString()} - ${customEndDate.toLocaleDateString()}`;
+            default:
+                return 'All Time';
+        }
+    }, [dateFilter, customStartDate, customEndDate]);
+
+    const handleDateFilterChange = useCallback((filter) => {
+        setDateFilter(filter);
+        setPage(1);
+        if (filter !== 'custom') {
+            setShowDateFilterModal(false);
+        }
+    }, []);
+
+    const handleCustomDateConfirm = useCallback(() => {
+        setDateFilter('custom');
+        setPage(1);
+        setShowDateFilterModal(false);
+    }, []);
+
+    const onStartDateChange = useCallback((event, selectedDate) => {
+        setShowStartDatePicker(false);
+        if (selectedDate) {
+            setCustomStartDate(selectedDate);
+        }
+    }, []);
+
+    const onEndDateChange = useCallback((event, selectedDate) => {
+        setShowEndDatePicker(false);
+        if (selectedDate) {
+            setCustomEndDate(selectedDate);
+        }
+    }, []);
+
+    // Export functions
+    const handleExportCSV = useCallback(async () => {
+        setIsExporting(true);
+        setShowExportModal(false);
+
+        try {
+            // Get all transactions with current filter
+            const allTransactions = await databaseService.getTransactions();
+            const filteredTransactions = filterTransactionsByDate(allTransactions);
+
+            const dateRangeText = exportService.getDateRangeText(dateFilter, customStartDate, customEndDate);
+            const result = await exportService.exportToCSV(filteredTransactions, totalSummary, topSales, dateRangeText);
+
+            if (result.success) {
+                Alert.alert('Export Successful', result.message);
+            } else {
+                Alert.alert('Export Failed', result.error);
+            }
+        } catch (error) {
+            console.error('Export error:', error);
+            Alert.alert('Export Failed', 'An error occurred while exporting data.');
+        } finally {
+            setIsExporting(false);
+        }
+    }, [dateFilter, customStartDate, customEndDate, totalSummary, topSales, filterTransactionsByDate]);
+
+    const handleExportExcel = useCallback(async () => {
+        setIsExporting(true);
+        setShowExportModal(false);
+
+        try {
+            // Get all transactions with current filter
+            const allTransactions = await databaseService.getTransactions();
+            const filteredTransactions = filterTransactionsByDate(allTransactions);
+
+            const dateRangeText = exportService.getDateRangeText(dateFilter, customStartDate, customEndDate);
+            const result = await exportService.exportToExcel(filteredTransactions, totalSummary, topSales, dateRangeText);
+
+            if (result.success) {
+                Alert.alert('Export Successful', result.message);
+            } else {
+                Alert.alert('Export Failed', result.error);
+            }
+        } catch (error) {
+            console.error('Export error:', error);
+            Alert.alert('Export Failed', 'An error occurred while exporting data.');
+        } finally {
+            setIsExporting(false);
+        }
+    }, [dateFilter, customStartDate, customEndDate, totalSummary, topSales, filterTransactionsByDate]);
 
     if (loading && items.length === 0) {
         return (
@@ -351,6 +515,43 @@ const RecordsScreen = ({ navigation }) => {
                                 {totalSummary.total_transactions} transactions • {topSales.length} items
                             </Text>
                         </View>
+                    </View>
+
+                    {/* Date Filter & Export Controls */}
+                    <View style={styles.controlsContainer}>
+                        <TouchableOpacity
+                            style={styles.dateFilterButton}
+                            onPress={() => setShowDateFilterModal(true)}
+                            activeOpacity={0.8}
+                        >
+                            <Ionicons name="calendar-outline" size={20} color="#2563eb" />
+                            <Text style={styles.dateFilterText}>
+                                {getFilterDisplayText()}
+                            </Text>
+                            <Ionicons name="chevron-down" size={16} color="#2563eb" />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[
+                                styles.exportButton,
+                                (isExporting || totalSummary.total_transactions === 0) && styles.exportButtonDisabled
+                            ]}
+                            onPress={() => setShowExportModal(true)}
+                            activeOpacity={0.8}
+                            disabled={isExporting || totalSummary.total_transactions === 0}
+                        >
+                            {isExporting ? (
+                                <>
+                                    <Ionicons name="hourglass-outline" size={18} color="#9ca3af" />
+                                    <Text style={styles.exportButtonTextDisabled}>Exporting...</Text>
+                                </>
+                            ) : (
+                                <>
+                                    <Ionicons name="download-outline" size={18} color="#ffffff" />
+                                    <Text style={styles.exportButtonText}>Export</Text>
+                                </>
+                            )}
+                        </TouchableOpacity>
                     </View>
 
                     {totalSummary.total_transactions === 0 ? (
@@ -422,6 +623,182 @@ const RecordsScreen = ({ navigation }) => {
                     )}
                 </View>
             </ScrollView>
+
+            {/* Date Filter Modal */}
+            <Modal
+                animationType="slide"
+                transparent={true}
+                visible={showDateFilterModal}
+                onRequestClose={() => setShowDateFilterModal(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Filter by Date</Text>
+                            <TouchableOpacity
+                                style={styles.modalCloseButton}
+                                onPress={() => setShowDateFilterModal(false)}
+                            >
+                                <Ionicons name="close" size={24} color="#6b7280" />
+                            </TouchableOpacity>
+                        </View>
+
+                        <View style={styles.filterOptionsContainer}>
+                            {[
+                                { key: 'all', label: 'All Time', icon: 'infinite-outline' },
+                                { key: 'today', label: 'Today', icon: 'today-outline' },
+                                { key: 'week', label: 'This Week', icon: 'calendar-outline' },
+                                { key: 'month', label: 'This Month', icon: 'calendar-outline' },
+                                { key: 'custom', label: 'Custom Range', icon: 'options-outline' }
+                            ].map((option) => (
+                                <TouchableOpacity
+                                    key={option.key}
+                                    style={[
+                                        styles.filterOption,
+                                        dateFilter === option.key && styles.filterOptionActive
+                                    ]}
+                                    onPress={() => handleDateFilterChange(option.key)}
+                                    activeOpacity={0.7}
+                                >
+                                    <Ionicons
+                                        name={option.icon}
+                                        size={20}
+                                        color={dateFilter === option.key ? '#2563eb' : '#6b7280'}
+                                    />
+                                    <Text style={[
+                                        styles.filterOptionText,
+                                        dateFilter === option.key && styles.filterOptionTextActive
+                                    ]}>
+                                        {option.label}
+                                    </Text>
+                                    {dateFilter === option.key && (
+                                        <Ionicons name="checkmark" size={20} color="#2563eb" />
+                                    )}
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        {dateFilter === 'custom' && (
+                            <View style={styles.customDateContainer}>
+                                <Text style={styles.customDateLabel}>Select Date Range</Text>
+
+                                <View style={styles.dateRangeContainer}>
+                                    <TouchableOpacity
+                                        style={styles.dateButton}
+                                        onPress={() => setShowStartDatePicker(true)}
+                                    >
+                                        <Ionicons name="calendar" size={16} color="#6b7280" />
+                                        <Text style={styles.dateButtonText}>
+                                            From: {customStartDate.toLocaleDateString()}
+                                        </Text>
+                                    </TouchableOpacity>
+
+                                    <TouchableOpacity
+                                        style={styles.dateButton}
+                                        onPress={() => setShowEndDatePicker(true)}
+                                    >
+                                        <Ionicons name="calendar" size={16} color="#6b7280" />
+                                        <Text style={styles.dateButtonText}>
+                                            To: {customEndDate.toLocaleDateString()}
+                                        </Text>
+                                    </TouchableOpacity>
+                                </View>
+
+                                <TouchableOpacity
+                                    style={styles.confirmCustomDateButton}
+                                    onPress={handleCustomDateConfirm}
+                                >
+                                    <Text style={styles.confirmCustomDateText}>Apply Date Range</Text>
+                                </TouchableOpacity>
+                            </View>
+                        )}
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Date Pickers */}
+            {showStartDatePicker && (
+                <DateTimePicker
+                    value={customStartDate}
+                    mode="date"
+                    display="default"
+                    onChange={onStartDateChange}
+                />
+            )}
+
+            {showEndDatePicker && (
+                <DateTimePicker
+                    value={customEndDate}
+                    mode="date"
+                    display="default"
+                    onChange={onEndDateChange}
+                />
+            )}
+
+            {/* Export Modal */}
+            <Modal
+                animationType="slide"
+                transparent={true}
+                visible={showExportModal}
+                onRequestClose={() => setShowExportModal(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.exportModalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Export Sales Report</Text>
+                            <TouchableOpacity
+                                style={styles.modalCloseButton}
+                                onPress={() => setShowExportModal(false)}
+                            >
+                                <Ionicons name="close" size={24} color="#6b7280" />
+                            </TouchableOpacity>
+                        </View>
+
+                        <Text style={styles.exportDescription}>
+                            Export your sales data for the selected period: {getFilterDisplayText()}
+                        </Text>
+                        <Text style={styles.exportInfo}>
+                            {totalSummary.total_transactions} transactions • ₱{totalSummary.total_sales.toFixed(2)} total sales
+                        </Text>
+
+                        <View style={styles.exportOptionsContainer}>
+                            <TouchableOpacity
+                                style={styles.exportOption}
+                                onPress={handleExportCSV}
+                                activeOpacity={0.7}
+                            >
+                                <View style={styles.exportOptionIcon}>
+                                    <Ionicons name="document-text-outline" size={24} color="#2563eb" />
+                                </View>
+                                <View style={styles.exportOptionText}>
+                                    <Text style={styles.exportOptionTitle}>CSV Format</Text>
+                                    <Text style={styles.exportOptionSubtitle}>
+                                        Compatible with spreadsheet apps and databases
+                                    </Text>
+                                </View>
+                                <Ionicons name="chevron-forward" size={20} color="#6b7280" />
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={styles.exportOption}
+                                onPress={handleExportExcel}
+                                activeOpacity={0.7}
+                            >
+                                <View style={[styles.exportOptionIcon, { backgroundColor: '#dcfce7' }]}>
+                                    <Ionicons name="grid-outline" size={24} color="#059669" />
+                                </View>
+                                <View style={styles.exportOptionText}>
+                                    <Text style={styles.exportOptionTitle}>Excel Format</Text>
+                                    <Text style={styles.exportOptionSubtitle}>
+                                        Optimized for Microsoft Excel and Google Sheets
+                                    </Text>
+                                </View>
+                                <Ionicons name="chevron-forward" size={20} color="#6b7280" />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 };
@@ -778,5 +1155,234 @@ const styles = StyleSheet.create({
     noItemsText: {
         color: '#6b7280',
         fontStyle: 'italic',
+    },
+
+    // Controls Container (Date Filter & Export)
+    controlsContainer: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 20,
+        paddingHorizontal: 16,
+        gap: 8,
+    },
+    dateFilterButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#ffffff',
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderRadius: 10,
+        borderWidth: 1.5,
+        borderColor: '#e5e7eb',
+        gap: 6,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
+        elevation: 2,
+    },
+    dateFilterText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#374151',
+    },
+
+    // Modal Styles
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        justifyContent: 'flex-end',
+    },
+    modalContent: {
+        backgroundColor: '#ffffff',
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        paddingHorizontal: 20,
+        paddingBottom: 40,
+        maxHeight: '80%',
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 20,
+        borderBottomWidth: 1,
+        borderBottomColor: '#e5e7eb',
+    },
+    modalTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#1f2937',
+    },
+    modalCloseButton: {
+        padding: 4,
+    },
+
+    // Filter Options
+    filterOptionsContainer: {
+        paddingVertical: 20,
+    },
+    filterOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 16,
+        paddingHorizontal: 16,
+        borderRadius: 12,
+        marginBottom: 8,
+        backgroundColor: '#f9fafb',
+        gap: 12,
+    },
+    filterOptionActive: {
+        backgroundColor: '#eff6ff',
+        borderWidth: 1,
+        borderColor: '#3b82f6',
+    },
+    filterOptionText: {
+        fontSize: 16,
+        color: '#6b7280',
+        flex: 1,
+        fontWeight: '500',
+    },
+    filterOptionTextActive: {
+        color: '#2563eb',
+        fontWeight: '600',
+    },
+
+    // Custom Date Range
+    customDateContainer: {
+        borderTopWidth: 1,
+        borderTopColor: '#e5e7eb',
+        paddingTop: 20,
+    },
+    customDateLabel: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#1f2937',
+        marginBottom: 16,
+        textAlign: 'center',
+    },
+    dateRangeContainer: {
+        gap: 12,
+        marginBottom: 20,
+    },
+    dateButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f3f4f6',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#d1d5db',
+        gap: 8,
+    },
+    dateButtonText: {
+        fontSize: 14,
+        color: '#374151',
+        fontWeight: '500',
+    },
+    confirmCustomDateButton: {
+        backgroundColor: '#2563eb',
+        paddingVertical: 14,
+        borderRadius: 8,
+        alignItems: 'center',
+    },
+    confirmCustomDateText: {
+        color: '#ffffff',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+
+    // Export Button Styles
+    exportButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#059669',
+        paddingHorizontal: 20,
+        paddingVertical: 14,
+        borderRadius: 12,
+        gap: 8,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+        minWidth: 120,
+        justifyContent: 'center',
+    },
+    exportButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#ffffff',
+    },
+    exportButtonTextDisabled: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#9ca3af',
+    },
+    exportButtonDisabled: {
+        backgroundColor: '#f3f4f6',
+        borderWidth: 1,
+        borderColor: '#e5e7eb',
+    },
+
+    // Export Modal Styles
+    exportModalContent: {
+        backgroundColor: '#ffffff',
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        paddingHorizontal: 20,
+        paddingBottom: 40,
+        maxHeight: '70%',
+    },
+    exportDescription: {
+        fontSize: 16,
+        color: '#4b5563',
+        textAlign: 'center',
+        marginBottom: 8,
+    },
+    exportInfo: {
+        fontSize: 14,
+        color: '#6b7280',
+        textAlign: 'center',
+        marginBottom: 24,
+        fontWeight: '500',
+    },
+    exportOptionsContainer: {
+        gap: 16,
+    },
+    exportOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f9fafb',
+        paddingVertical: 16,
+        paddingHorizontal: 16,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#e5e7eb',
+        gap: 16,
+    },
+    exportOptionIcon: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: '#eff6ff',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    exportOptionText: {
+        flex: 1,
+    },
+    exportOptionTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#1f2937',
+        marginBottom: 4,
+    },
+    exportOptionSubtitle: {
+        fontSize: 14,
+        color: '#6b7280',
+        lineHeight: 18,
     },
 });

@@ -52,6 +52,17 @@ class PrinterService {
     return this.connectedPrinter !== null;
   }
 
+  // Check if printer is required for transactions
+  async isPrinterRequired() {
+    try {
+      const setting = await AsyncStorage.getItem('printer_required');
+      return setting !== null ? JSON.parse(setting) : true; // Default to true
+    } catch (error) {
+      console.error('Error checking printer requirement:', error);
+      return true; // Default to true on error
+    }
+  }
+
   // Print receipt function
   async printReceipt(paymentData, cart = []) {
     if (!this.connectedPrinter || this.isPrinting) {
@@ -174,8 +185,30 @@ class PrinterService {
     }
     receiptText += '\n';
 
-    // QR Code Section
+    // Important Disclaimer
     receiptText += '\x1B\x61\x01'; // Center align
+    receiptText += '\x1B\x21\x30'; // Set double height and width
+    receiptText += '********************************\n';
+    receiptText += '\x1B\x21\x00'; // Reset to normal size
+    receiptText += '\n';
+    receiptText += '\x1B\x21\x10'; // Set double height
+    receiptText += 'THIS IS NOT AN OFFICIAL RECEIPT\n';
+    receiptText += '\x1B\x21\x00'; // Reset to normal size
+    receiptText += '\n';
+    receiptText += 'THIS ONLY ACTS AS AN ORDER SLIP\n';
+    receiptText += 'FOR YOUR REFERENCE ONLY\n';
+    receiptText += '\n';
+    receiptText += '\x1B\x21\x10'; // Set double height
+    receiptText += 'ALWAYS ASK FOR AN\n';
+    receiptText += 'OFFICIAL RECEIPT\n';
+    receiptText += '\x1B\x21\x00'; // Reset to normal size
+    receiptText += '\n';
+    receiptText += '\x1B\x21\x30'; // Set double height and width
+    receiptText += '********************************\n';
+    receiptText += '\x1B\x21\x00'; // Reset to normal size
+    receiptText += '\n';
+
+    // QR Code Section
     receiptText += 'Visit our website:\n';
 
     // Create QR code

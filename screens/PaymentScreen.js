@@ -25,9 +25,11 @@ const PaymentScreen = ({ route, navigation }) => {
   const [paymentDetails, setPaymentDetails] = useState({});
   const [connectedPrinter, setConnectedPrinter] = useState(null);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [printerRequired, setPrinterRequired] = useState(true);
 
   useEffect(() => {
     loadPrinter();
+    loadPrinterSetting();
   }, []);
 
   const loadPrinter = async () => {
@@ -39,7 +41,29 @@ const PaymentScreen = ({ route, navigation }) => {
     }
   };
 
+  const loadPrinterSetting = async () => {
+    try {
+      const isRequired = await printerService.isPrinterRequired();
+      setPrinterRequired(isRequired);
+    } catch (error) {
+      console.error('Error loading printer setting:', error);
+    }
+  };
+
   const handlePayment = (method) => {
+    // Check if printer is required and not available
+    if (printerRequired && !printerService.isPrinterAvailable()) {
+      Alert.alert(
+        'Printer Required',
+        'A printer is required for checkout but none is connected. Please connect a printer in Printer Settings.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Printer Settings', onPress: () => navigation.navigate('Printers') }
+        ]
+      );
+      return;
+    }
+
     if (method === 'Gcash' || method === 'BPI') {
       navigation.navigate('QR', { total, method, cart });
     } else if (method === 'Cash') {
@@ -126,13 +150,19 @@ const PaymentScreen = ({ route, navigation }) => {
   };
 
   const printReceipt = async (paymentData) => {
+    // If printer is not required, skip printing
+    if (!printerRequired) {
+      console.log('Printer not required, skipping receipt printing');
+      return;
+    }
+
     if (!printerService.isPrinterAvailable()) {
       console.log('No printer available for receipt printing');
       return;
     }
 
     setIsPrinting(true);
-    
+
     try {
       const result = await printerService.printReceipt(paymentData, cart);
       if (!result.success) {
@@ -185,11 +215,20 @@ const PaymentScreen = ({ route, navigation }) => {
         </View>
 
         {/* Printer Status */}
-        {connectedPrinter && (
+        {printerRequired && connectedPrinter && (
           <View style={styles.printerStatusCard}>
             <Ionicons name="print" size={20} color="#16a34a" />
             <Text style={styles.printerStatusText}>
               Printer: {connectedPrinter.name} Ready
+            </Text>
+          </View>
+        )}
+
+        {!printerRequired && (
+          <View style={[styles.printerStatusCard, { backgroundColor: '#f0f9ff', borderLeftColor: '#2563eb' }]}>
+            <Ionicons name="information-circle" size={20} color="#2563eb" />
+            <Text style={[styles.printerStatusText, { color: '#2563eb' }]}>
+              Printer not required for checkout
             </Text>
           </View>
         )}
@@ -224,7 +263,7 @@ const PaymentScreen = ({ route, navigation }) => {
 
           <TouchableOpacity
             style={[styles.paymentButton, { backgroundColor: '#8b5cf6' }]}
-            onPress={() => navigation.navigate('BluetoothScanner')}
+            onPress={() => navigation.navigate('Printers')}
             activeOpacity={0.8}
           >
             <Ionicons name="print" size={32} color="#ffffff" />

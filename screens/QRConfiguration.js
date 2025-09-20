@@ -9,6 +9,7 @@ import {
   Alert,
   ScrollView,
   ActivityIndicator,
+  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -20,10 +21,12 @@ const QRManagementScreen = ({ navigation, route }) => {
     BPI: null
   });
   const [loading, setLoading] = useState(false);
+  const [printerRequired, setPrinterRequired] = useState(true);
   const { method } = route.params || {};
 
   useEffect(() => {
     loadQRImages();
+    loadPrinterSetting();
     requestPermissions();
   }, []);
 
@@ -53,6 +56,27 @@ const QRManagementScreen = ({ navigation, route }) => {
       Alert.alert('Error', 'Failed to load QR images');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadPrinterSetting = async () => {
+    try {
+      const setting = await AsyncStorage.getItem('printer_required');
+      if (setting !== null) {
+        setPrinterRequired(JSON.parse(setting));
+      }
+    } catch (error) {
+      console.log('Error loading printer setting:', error);
+    }
+  };
+
+  const savePrinterSetting = async (value) => {
+    try {
+      await AsyncStorage.setItem('printer_required', JSON.stringify(value));
+      setPrinterRequired(value);
+    } catch (error) {
+      console.log('Error saving printer setting:', error);
+      Alert.alert('Error', 'Failed to save printer setting');
     }
   };
 
@@ -192,6 +216,28 @@ const QRManagementScreen = ({ navigation, route }) => {
             <Text style={styles.loadingText}>Processing...</Text>
           </View>
         )}
+
+        <View style={styles.settingsCard}>
+          <Text style={styles.settingsTitle}>Printer Settings</Text>
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <Ionicons name="print" size={20} color="#6b7280" />
+              <View style={styles.settingText}>
+                <Text style={styles.settingLabel}>Require Printer for Checkout</Text>
+                <Text style={styles.settingDescription}>
+                  Toggle this off if you want to allow checkout without a printer
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={printerRequired}
+              onValueChange={savePrinterSetting}
+              trackColor={{ false: '#e5e7eb', true: '#2563eb' }}
+              thumbColor={printerRequired ? '#ffffff' : '#ffffff'}
+            />
+          </View>
+        </View>
+
         {!method && (
           <>
             <QRCard paymentType="Gcash" qrUri={qrImages.Gcash} />
@@ -355,6 +401,49 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6b7280',
     lineHeight: 20,
+  },
+  settingsCard: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  settingsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 16,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  settingInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 16,
+  },
+  settingText: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  settingLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginBottom: 4,
+  },
+  settingDescription: {
+    fontSize: 14,
+    color: '#6b7280',
+    lineHeight: 18,
   },
 });
 

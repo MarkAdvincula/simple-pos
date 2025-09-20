@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,18 +13,19 @@ import { useScreen } from '../src/contexts/ScreenContext';
 
 const MenuScreen = ({ navigation }) => {
   const [cart, setCart] = useState([]);
-  const [screenData, setScreenData] = useState(Dimensions.get('window'));
+  const screenDataRef = useRef(Dimensions.get('window'));
   const {isPhone, isSmallPhone,isLargeTablet} = useScreen();
+
   useEffect(() => {
     const subscription = Dimensions.addEventListener('change', (result) => {
-      setScreenData(result.window);
+      screenDataRef.current = result.window;
     });
     return () => subscription?.remove();
   }, []);
 
 
 
-  const menu = {
+  const menu = useMemo(() => ({
     'Espresso': [
       { name: 'Sea Salt Latte', price: 180 },
       { name: 'Orange Americano', price: 150 },
@@ -48,41 +49,44 @@ const MenuScreen = ({ navigation }) => {
         name: 'Test', price: 1
       }
     ]
-  };
+  }), []);
 
-  const addToCart = (item) => {
-    const existingItem = cart.find(cartItem => cartItem.name === item.name);
-    if (existingItem) {
-      setCart(cart.map(cartItem =>
-        cartItem.name === item.name
-          ? { ...cartItem, quantity: cartItem.quantity + 1 }
-          : cartItem
-      ));
-    } else {
-      setCart([...cart, { ...item, quantity: 1 }]);
-    }
-  };
+  const addToCart = useCallback((item) => {
+    setCart(prevCart => {
+      const existingItem = prevCart.find(cartItem => cartItem.name === item.name);
+      if (existingItem) {
+        return prevCart.map(cartItem =>
+          cartItem.name === item.name
+            ? { ...cartItem, quantity: cartItem.quantity + 1 }
+            : cartItem
+        );
+      } else {
+        return [...prevCart, { ...item, quantity: 1 }];
+      }
+    });
+  }, []);
 
-  const removeFromCart = (itemName) => {
-    setCart(cart.filter(item => item.name !== itemName));
-  };
+  const removeFromCart = useCallback((itemName) => {
+    setCart(prevCart => prevCart.filter(item => item.name !== itemName));
+  }, []);
 
-  const clearCart = () => setCart([]);
+  const clearCart = useCallback(() => setCart([]), []);
 
-  const getTotalPrice = () => {
+  const getTotalPrice = useMemo(() => {
     return cart.reduce((total, item) => total + (item.price * item.quantity), 0);
-  };
+  }, [cart]);
 
-  const handleProceedToPayment = () => {
-    navigation.navigate('Payment', { cart, total: getTotalPrice() });
-  };
+  const handleProceedToPayment = useCallback(() => {
+    navigation.navigate('Payment', { cart, total: getTotalPrice });
+  }, [cart, getTotalPrice, navigation]);
 
-  const showSales = () => {
+  const showSales = useCallback(() => {
     navigation.navigate('Records');
-  };
-  const showPrinters = () => {
+  }, [navigation]);
+
+  const showPrinters = useCallback(() => {
     navigation.navigate('Printers');
-  };
+  }, [navigation]);
 
   // Dynamic styles based on screen size
   const dynamicStyles = StyleSheet.create({
@@ -286,7 +290,7 @@ const MenuScreen = ({ navigation }) => {
               <View style={dynamicStyles.cartFooter}>
                 <View style={styles.totalContainer}>
                   <Text style={styles.totalLabel}>Total:</Text>
-                  <Text style={styles.totalAmount}>₱{getTotalPrice()}</Text>
+                  <Text style={styles.totalAmount}>₱{getTotalPrice}</Text>
                 </View>
                 <TouchableOpacity
                   style={dynamicStyles.checkoutButton}

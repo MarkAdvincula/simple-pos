@@ -6,10 +6,12 @@ import {
   StyleSheet,
   Image,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import databaseService from '../src/services/database';
+import printerService from '../src/services/printerService';
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 const QRScreen = ({ route, navigation }) => {
@@ -18,10 +20,12 @@ const QRScreen = ({ route, navigation }) => {
   const [qrImage, setQrImage] = useState();
   const [paymentDetails, setPaymentDetails] = useState();
   const [screenData, setScreenData] = useState(Dimensions.get('window'));
+  const [printerRequired, setPrinterRequired] = useState(true);
   const isPhone = screenData.width < 768;
 
   useEffect( () => {
     loadQRImages();
+    loadPrinterSetting();
   },[])
 
 
@@ -36,12 +40,21 @@ const QRScreen = ({ route, navigation }) => {
       }
 
       setQrImage(getQR);
-      
+
     } catch (error) {
       console.log('Error loading QR images:', error);
       Alert.alert('Error', 'Failed to load QR images');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadPrinterSetting = async () => {
+    try {
+      const isRequired = await printerService.isPrinterRequired();
+      setPrinterRequired(isRequired);
+    } catch (error) {
+      console.error('Error loading printer setting:', error);
     }
   };
 
@@ -51,28 +64,47 @@ const QRScreen = ({ route, navigation }) => {
   }
 
   const confirmPayment = async (camera) => {
-    camera ? navigation.navigate('Camera', { total }) : navigation.navigate('Menu', { total })
+    // Check if printer is required and not available
+    if (printerRequired && !printerService.isPrinterAvailable()) {
+      Alert.alert(
+        'Printer Required',
+        'A printer is required for checkout but none is connected. Please connect a printer in Printer Settings.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Printer Settings', onPress: () => navigation.navigate('Printers') }
+        ]
+      );
+      return;
+    }
 
     try{
       const transactionId = await databaseService.addTransaction(cart, method);
-      setPaymentDetails({
+      const paymentData = {
         method: method,
-        total: totalAmount,
-        received: receivedAmount,
-        change: change,
+        total: parseFloat(total),
         status: 'success',
         transactionId: transactionId
-      });
+      };
+      setPaymentDetails(paymentData);
+
+      // Print receipt if printer is available and required
+      if (printerRequired && printerService.isPrinterAvailable()) {
+        try {
+          await printerService.printReceipt(paymentData, cart);
+        } catch (printError) {
+          console.error('Print failed:', printError);
+        }
+      }
+
+      camera ? navigation.navigate('Camera', { total }) : navigation.navigate('Menu', { total });
     }catch(error){
       setPaymentDetails({
         method: method,
-        total: totalAmount,
-        received: receivedAmount,
-        change: change,
+        total: parseFloat(total),
         status: 'error',
         error: error.message
       });
-      console.error('Payment failed:', error)
+      console.error('Payment failed:', error);
     }
   }
 
