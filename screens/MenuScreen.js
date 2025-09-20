@@ -9,13 +9,12 @@ import {
   Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useScreen } from '../src/contexts/ScreenContext';
 
 const MenuScreen = ({ navigation }) => {
   const [cart, setCart] = useState([]);
   const [screenData, setScreenData] = useState(Dimensions.get('window'));
-  const isPhone = screenData.width < 768;
-  const isSmallPhone = screenData.width < 375;
-
+  const {isPhone, isSmallPhone,isLargeTablet} = useScreen();
   useEffect(() => {
     const subscription = Dimensions.addEventListener('change', (result) => {
       setScreenData(result.window);
@@ -40,9 +39,14 @@ const MenuScreen = ({ navigation }) => {
       { name: 'Iced Tea', price: 100 }
     ],
     'Foods': [
-      { name: 'Sandwich', price: 180 },
+      { name: 'Sandwiches', price: 180 },
       { name: 'Half Sandwich', price: 99 },
       { name: 'Chicken Pesto', price: 199 }
+    ],
+    'Test 1': [
+      {
+        name: 'Test', price: 1
+      }
     ]
   };
 
@@ -76,6 +80,9 @@ const MenuScreen = ({ navigation }) => {
   const showSales = () => {
     navigation.navigate('Records');
   };
+  const showPrinters = () => {
+    navigation.navigate('Printers');
+  };
 
   // Dynamic styles based on screen size
   const dynamicStyles = StyleSheet.create({
@@ -96,11 +103,11 @@ const MenuScreen = ({ navigation }) => {
       backgroundColor: '#ffffff',
       width: isPhone ?
         (screenData.width - 40) / 2 - 8 :
-        screenData.width * 0.15,
-      padding: isSmallPhone ? 8 : 12,
+        isLargeTablet ? 200 : screenData.width * 0.15,
+      height: 100,
+      padding: isSmallPhone ? 8 : 5,
       borderRadius: 12,
-      marginBottom: 8,
-      marginRight: isPhone ? 0 : 8,
+      marginRight: isPhone ? 0 : 5,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.1,
@@ -108,6 +115,8 @@ const MenuScreen = ({ navigation }) => {
       elevation: 3,
       borderWidth: 2,
       borderColor: '#e5e7eb',
+      justifyContent:'center',
+      alignItems: 'center',
     },
     cartSection: {
       minWidth: isPhone ? '100%' : 350,
@@ -130,10 +139,11 @@ const MenuScreen = ({ navigation }) => {
       color: '#374151',
     },
     itemName: {
-      fontSize: isSmallPhone ? 10 : 12,
+      fontSize: isSmallPhone ? 10 : 15,
       fontWeight: 'bold',
       color: '#1f2937',
       marginBottom: 8,
+      textAlign:'center'
     },
     itemPrice: {
       fontSize: isSmallPhone ? 8 : 10, // Fixed from 3 to 8
@@ -182,6 +192,10 @@ const MenuScreen = ({ navigation }) => {
             <TouchableOpacity onPress={showSales}>
               <Ionicons name="podium-outline" size={20} color="#ef4444" />
             </TouchableOpacity>
+            <TouchableOpacity onPress={showPrinters}>
+              <Ionicons name="receipt-outline" size={20} color="#ef4444" />
+            </TouchableOpacity>
+            
             <TouchableOpacity onPress={() => navigation.navigate('ConfigQR')}>
               <Ionicons name="settings" size={20} color="gray" />
             </TouchableOpacity>

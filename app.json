@@ -3,7 +3,7 @@
     "name": "simple-pos",
     "slug": "simple-pos",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/2-blktxt-nobg.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
@@ -12,8 +12,10 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mark.advincula.simplepos"
     },
     "android": {
       "adaptiveIcon": {
@@ -24,8 +26,13 @@
       "package": "com.mark.advincula.simplepos",
       "permissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE"
-      ]
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN", 
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.ACCESS_FINE_LOCATION"
+       ]
     },
     "web": {
       "favicon": "./assets/favicon.png"

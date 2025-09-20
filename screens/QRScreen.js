@@ -4,18 +4,21 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   Image,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import databaseService from '../src/services/database';
+import { SafeAreaView } from 'react-native-safe-area-context'
 
 const QRScreen = ({ route, navigation }) => {
   const [ loading, setLoading ] = useState(false);
   const { total, method, cart } = route.params;
   const [qrImage, setQrImage] = useState();
   const [paymentDetails, setPaymentDetails] = useState();
+  const [screenData, setScreenData] = useState(Dimensions.get('window'));
+  const isPhone = screenData.width < 768;
 
   useEffect( () => {
     loadQRImages();
@@ -73,6 +76,8 @@ const QRScreen = ({ route, navigation }) => {
     }
   }
 
+  
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
@@ -85,9 +90,12 @@ const QRScreen = ({ route, navigation }) => {
         </TouchableOpacity>
         <Text style={styles.title}>{`${method === 'Gcash' ? 'Gcash' : 'BPI'} Payment`}</Text>
         
-        <View style={styles.qrContainer}>
-        {!method ? (<Ionicons name="qr-code" size={500} color="#6b7280" />) :
-         (<Image source={{uri: qrImage}}  style={styles.qrImage} />)}
+        <View style={dynamicStyles.qrContainer}>
+        {qrImage ? (
+  <Image source={{uri: qrImage}} style={dynamicStyles.qrImage} />
+) : (
+  <Ionicons name="qr-code-outline" size={300} color="#6b7280" />
+)}
         </View>
         
         <Text style={styles.instruction}>Scan QR Code to Pay</Text>
@@ -121,6 +129,23 @@ const QRScreen = ({ route, navigation }) => {
   );
 };
 
+const dynamicStyles = StyleSheet.create({
+  qrContainer: {
+    backgroundColor: '#f3f4f6',
+    width: 300,
+    height: 300,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  qrImage: {
+    width: 300,
+    height: 300,
+    resizeMode: 'contain',
+  },
+ });
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -138,20 +163,8 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     color: '#1f2937',
   },
-  qrContainer: {
-    backgroundColor: '#f3f4f6',
-    width: 500,
-    height: 500,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-  },
-  qrImage: {
-    width: 500,
-    height: 500,
-    resizeMode: 'contain',
-  },
+  
+
   instruction: {
     fontSize: 18,
     marginBottom: 8,
