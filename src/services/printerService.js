@@ -132,8 +132,7 @@ class PrinterService {
   // Create ESC/POS receipt data
   createReceiptData(paymentData, cart = []) {
     const now = new Date();
-    const dateStr = now.toLocaleDateString();
-    const timeStr = now.toLocaleTimeString();
+    const dateStr = `${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getDate().toString().padStart(2, '0')}/${now.getFullYear()}`;
 
     let receiptText = '';
 
@@ -142,38 +141,25 @@ class PrinterService {
 
     // Header
     receiptText += '\x1B\x61\x01'; // Center align
-    receiptText += '================================\n';
-    receiptText += 'CECILIA KITCHEN CAFE\n';
-    receiptText += 'Thank you for your order!\n';
-    receiptText += '================================\n';
+    receiptText += `ORDER RECEIPT #${paymentData.transactionId || 'N/A'}\n`;
+    receiptText += `${dateStr}\n`;
     receiptText += '\x1B\x61\x00'; // Left align
-    receiptText += '\n';
-
-    // Date and time
-    receiptText += `Date: ${dateStr}\n`;
-    receiptText += `Time: ${timeStr}\n`;
-    if (paymentData.transactionId) {
-      receiptText += `Trans ID: ${paymentData.transactionId}\n`;
-    }
     receiptText += '\n';
 
     // Items (if cart is provided)
     if (cart && cart.length > 0) {
-      receiptText += '--------------------------------\n';
-      receiptText += 'ITEMS:\n';
-      receiptText += '--------------------------------\n';
-
       cart.forEach(item => {
         const itemTotal = item.quantity * item.price;
-        receiptText += `${item.name}\n`;
-        receiptText += `  ${item.quantity} x P${item.price.toFixed(2)} = P${itemTotal.toFixed(2)}\n`;
+        receiptText += `${item.quantity}x ${item.name} P${item.price.toFixed(2)}\n`;
       });
 
-      receiptText += '--------------------------------\n';
+      // Calculate total cups
+      const totalCups = cart.reduce((sum, item) => sum + item.quantity, 0);
+      receiptText += `${totalCups} items\n`;
+      receiptText += '\n';
     }
 
     // Totals
-    receiptText += `SUBTOTAL: P${paymentData.total.toFixed(2)}\n`;
     receiptText += `TOTAL: P${paymentData.total.toFixed(2)}\n`;
     receiptText += '\n';
 
