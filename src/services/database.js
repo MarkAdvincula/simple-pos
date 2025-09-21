@@ -95,7 +95,6 @@ class DatabaseService {
             );
             `);
             
-            await this.populateInitialData();
 
 
         } catch (error) {
@@ -104,65 +103,6 @@ class DatabaseService {
         }
     }
 
-    /**
-     * This function automatically creates items on initiate, we could add this an app feature, 
-     * which user can have a 'Permanently' set for items, which could be a feature/premium stuff since it is a code change
-     */
-    async populateInitialData() {
-        try {
-            // Check if items table is empty
-            const itemCount = await this.db.getFirstAsync('SELECT COUNT(*) as count FROM items');
-            
-            if (itemCount.count === 0) {
-                console.log('Populating initial data...');
-                
-                const initialData = {
-                    'Espresso': [
-                      { name: 'Sea Salt Latte', price: 180 },
-                      { name: 'Orange Americano', price: 150 },
-                      { name: 'Cafe Latte', price: 150 },
-                      { name: 'Americano', price: 120 },
-                    ],
-                    'Brewed': [
-                      { name: 'Iced Vietnamese Latte', price: 120 },
-                      { name: 'Iced Vietnamese Latte w/ Sea Salt Cream', price: 150 }
-                    ],
-                    'Non-coffee': [
-                      { name: 'Iced Tea', price: 100 }
-                    ],
-                    'Foods': [
-                      { name: 'Sandwich', price: 180 },
-                      { name: 'Half Sandwich', price: 99 },
-                      { name: 'Chicken Pesto', price: 199 }
-                    ]
-                  };
-    
-                // Insert categories and items
-                for (const [categoryName, items] of Object.entries(initialData)) {
-                    // Insert category
-                    const categoryResult = await this.db.runAsync(
-                        'INSERT INTO categories (category_name) VALUES (?)',
-                        [categoryName]
-                    );
-                    
-                    const categoryId = categoryResult.lastInsertRowId;
-                    
-                    // Insert items for this category
-                    for (const item of items) {
-                        await this.db.runAsync(
-                            'INSERT INTO items (cid, item_name, price) VALUES (?, ?, ?)',
-                            [categoryId, item.name, item.price]
-                        );
-                    }
-                }
-                
-                console.log('Initial data populated successfully');
-            }
-        } catch (error) {
-            console.error('Error populating initial data:', error);
-            throw error;
-        }
-    }
 
     async getCategoriesWithItems() {
         await this.init();
@@ -224,7 +164,7 @@ class DatabaseService {
 
     async updateItem(id, itemName, price) {
         await this.init();
-    
+
         try {
             await this.db.runAsync(
                 'UPDATE items SET item_name = ?, price = ? WHERE id = ?',
@@ -232,6 +172,20 @@ class DatabaseService {
             );
         } catch (error) {
             console.error('Error updating item:', error);
+            throw error;
+        }
+    }
+
+    async deleteItem(id) {
+        await this.init();
+
+        try {
+            await this.db.runAsync(
+                'DELETE FROM items WHERE id = ?',
+                [id]
+            );
+        } catch (error) {
+            console.error('Error deleting item:', error);
             throw error;
         }
     }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -10,9 +11,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useScreen } from '../src/contexts/ScreenContext';
+import databaseService from '../src/services/database';
 
 const MenuScreen = ({ navigation }) => {
   const [cart, setCart] = useState([]);
+  const [menu, setMenu] = useState({});
+  const [loading, setLoading] = useState(true);
   const screenDataRef = useRef(Dimensions.get('window'));
   const {isPhone, isSmallPhone,isLargeTablet} = useScreen();
 
@@ -23,33 +27,38 @@ const MenuScreen = ({ navigation }) => {
     return () => subscription?.remove();
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      loadMenuFromDatabase();
+    }, [])
+  );
+
+  const loadMenuFromDatabase = async () => {
+    try {
+      setLoading(true);
+      const categoriesData = await databaseService.getCategoriesWithItems();
+
+      // Transform database data to match menu format
+      const transformedMenu = {};
+      categoriesData.forEach(category => {
+        transformedMenu[category.category_name] = category.items.map(item => ({
+          name: item.item_name,
+          price: item.price
+        }));
+      });
+
+      setMenu(transformedMenu);
+    } catch (error) {
+      console.error('Error loading menu from database:', error);
+      // Fallback to empty menu if database fails
+      setMenu({});
+    } finally {
+      setLoading(false);
+    }
+  };
 
 
-  const menu = useMemo(() => ({
-    'Espresso': [
-      { name: 'Sea Salt Latte', price: 180 },
-      { name: 'Orange Americano', price: 150 },
-      { name: 'Cafe Latte', price: 150 },
-      { name: 'Americano', price: 120 },
-    ],
-    'Brewed': [
-      { name: 'Iced Vietnamese Latte', price: 120 },
-      { name: 'Iced Vietnamese Latte', price: 150 }
-    ],
-    'Non-coffee': [
-      { name: 'Iced Tea', price: 100 }
-    ],
-    'Foods': [
-      { name: 'Sandwiches', price: 180 },
-      { name: 'Half Sandwich', price: 99 },
-      { name: 'Chicken Pesto', price: 199 }
-    ],
-    'Test 1': [
-      {
-        name: 'Test', price: 1
-      }
-    ]
-  }), []);
+
 
   const addToCart = useCallback((item) => {
     setCart(prevCart => {
@@ -184,6 +193,11 @@ const MenuScreen = ({ navigation }) => {
       justifyContent: 'space-between',
       alignItems: isPhone ? 'center' : 'stretch',
     },
+    loadingText: {
+      fontSize: 16,
+      color: '#6b7280',
+      textAlign: 'center',
+    },
   });
 
   return (
@@ -205,24 +219,30 @@ const MenuScreen = ({ navigation }) => {
             </TouchableOpacity>
           </View>
 
-          {Object.entries(menu).map(([category, items]) => (
-            <View key={category} style={styles.categoryContainer}>
-              <Text style={dynamicStyles.categoryTitle}>{category}</Text>
-              <View style={dynamicStyles.itemGrid}>
-                {items.map((item, index) => (
-                  <TouchableOpacity
-                    key={`${category}-${index}`}
-                    style={dynamicStyles.menuItem}
-                    onPress={() => addToCart(item)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={dynamicStyles.itemName}>{item.name}</Text>
-                    <Text style={dynamicStyles.itemPrice}>₱{item.price}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <Text style={dynamicStyles.loadingText}>Loading menu...</Text>
             </View>
-          ))}
+          ) : (
+            Object.entries(menu).map(([category, items]) => (
+              <View key={category} style={styles.categoryContainer}>
+                <Text style={dynamicStyles.categoryTitle}>{category}</Text>
+                <View style={dynamicStyles.itemGrid}>
+                  {items.map((item, index) => (
+                    <TouchableOpacity
+                      key={`${category}-${index}`}
+                      style={dynamicStyles.menuItem}
+                      onPress={() => addToCart(item)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={dynamicStyles.itemName}>{item.name}</Text>
+                      <Text style={dynamicStyles.itemPrice}>₱{item.price.toFixed(2)}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            ))
+          )}
         </ScrollView>
 
         {/* Cart Section */}
@@ -401,6 +421,12 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
   },
 });
 
