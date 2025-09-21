@@ -153,22 +153,59 @@ const MaintenanceScreen = () => {
     }
   }
 
+  // Delete item function
+  const deleteItem = async (itemId, itemName) => {
+    Alert.alert(
+      'Delete Item',
+      `Are you sure you want to delete "${itemName}"?`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await databaseService.deleteItem(itemId)
+              await loadCategoriesWithItems()
+              Alert.alert('Success', 'Item deleted successfully')
+            } catch (error) {
+              console.error('Error deleting item:', error)
+              Alert.alert('Error', 'Failed to delete item')
+            }
+          }
+        }
+      ]
+    )
+  }
+
   const renderCategory = ({ item }) => (
     <View style={styles.categoryCard}>
       <Text style={styles.categoryName}>{item.category_name}</Text>
       <View style={styles.itemsContainer}>
         {item.items.map((menuItem, index) => (
-          <TouchableOpacity 
-            key={index} 
-            style={styles.itemRow}
-            onPress={() => openEditModal(menuItem, item.id)}
-          >
+          <View key={index} style={styles.itemRow}>
             <View style={styles.itemInfo}>
               <Text style={styles.itemName}>{menuItem.item_name}</Text>
               <Text style={styles.itemPrice}>₱{menuItem.price.toFixed(2)}</Text>
             </View>
-            <Ionicons name="pencil" size={16} color="#666" />
-          </TouchableOpacity>
+            <View style={styles.itemActions}>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => openEditModal(menuItem, item.id)}
+              >
+                <Ionicons name="pencil" size={16} color="#2e7d32" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => deleteItem(menuItem.id, menuItem.item_name)}
+              >
+                <Ionicons name="trash" size={16} color="#d32f2f" />
+              </TouchableOpacity>
+            </View>
+          </View>
         ))}
       </View>
     </View>
@@ -410,6 +447,13 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#333',
     marginRight: 12,
+  },
+  itemActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  actionButton: {
+    padding: 4,
   },
   modalOverlay: {
     flex: 1,
