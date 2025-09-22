@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { Picker } from '@react-native-picker/picker'
 import databaseService from '../src/services/database'
+import menuExportService from '../src/services/menuExportService'
 
 const MaintenanceScreen = () => {
   const [categories, setCategories] = useState([])
@@ -181,6 +182,82 @@ const MaintenanceScreen = () => {
     )
   }
 
+  // Menu export/import functions
+  const handleExportMenu = () => {
+    Alert.alert(
+      'Export Menu',
+      'Choose export format:',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'JSON',
+          onPress: exportMenuAsJSON
+        },
+        {
+          text: 'CSV',
+          onPress: exportMenuAsCSV
+        }
+      ]
+    )
+  }
+
+  const exportMenuAsJSON = async () => {
+    try {
+      const result = await menuExportService.exportMenuToJSON()
+      if (result.success) {
+        Alert.alert('Success', result.message)
+      } else {
+        Alert.alert('Error', result.error)
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to export menu')
+    }
+  }
+
+  const exportMenuAsCSV = async () => {
+    try {
+      const result = await menuExportService.exportMenuToCSV()
+      if (result.success) {
+        Alert.alert('Success', result.message)
+      } else {
+        Alert.alert('Error', result.error)
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to export menu')
+    }
+  }
+
+  const handleImportMenu = async () => {
+    try {
+      const result = await menuExportService.showImportOptions()
+      if (result.success) {
+        await loadCategoriesWithItems()
+        Alert.alert('Success', result.message)
+      } else if (result.error !== 'Import cancelled') {
+        Alert.alert('Error', result.error)
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to import menu')
+    }
+  }
+
+  const handleClearMenu = async () => {
+    try {
+      const result = await menuExportService.clearMenuWithConfirmation()
+      if (result.success) {
+        await loadCategoriesWithItems()
+        Alert.alert('Success', result.message)
+      } else if (result.error !== 'Operation cancelled') {
+        Alert.alert('Error', result.error)
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to clear menu')
+    }
+  }
+
   const renderCategory = ({ item }) => (
     <View style={styles.categoryCard}>
       <Text style={styles.categoryName}>{item.category_name}</Text>
@@ -233,6 +310,21 @@ const MaintenanceScreen = () => {
             <Text style={styles.addButtonText}>Item</Text>
           </TouchableOpacity>
         </View>
+      </View>
+
+      <View style={styles.menuActions}>
+        <TouchableOpacity style={styles.exportButton} onPress={handleExportMenu}>
+          <Ionicons name="download-outline" size={18} color="white" />
+          <Text style={styles.actionButtonText}>Export</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.importButton} onPress={handleImportMenu}>
+          <Ionicons name="cloud-upload-outline" size={18} color="white" />
+          <Text style={styles.actionButtonText}>Import</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.clearButton} onPress={handleClearMenu}>
+          <Ionicons name="trash-outline" size={18} color="white" />
+          <Text style={styles.actionButtonText}>Clear All</Text>
+        </TouchableOpacity>
       </View>
       
       <FlatList
@@ -296,24 +388,22 @@ const MaintenanceScreen = () => {
             <Text style={styles.modalTitle}>Add New Item</Text>
             
             <Text style={styles.label}>Category</Text>
-<TouchableOpacity 
-  style={styles.categorySelector}
-  onPress={() => {
-    Alert.alert(
-      'Select Category',
-      '',
-      categories.map(cat => ({
-        text: cat.category_name,
-        onPress: () => setSelectedCategoryId(cat.id.toString())
-      }))
-    );
-  }}
->
-  <Text style={styles.categorySelectorText}>
-    {categories.find(cat => cat.id.toString() === selectedCategoryId)?.category_name || 'Select Category'}
-  </Text>
-  <Ionicons name="chevron-down" size={20} color="#666" />
-</TouchableOpacity>
+            <View style={styles.pickerContainer}>
+              <Picker
+                selectedValue={selectedCategoryId}
+                onValueChange={(itemValue) => setSelectedCategoryId(itemValue)}
+                style={styles.picker}
+              >
+                <Picker.Item label="Select Category" value="" />
+                {categories.map(category => (
+                  <Picker.Item
+                    key={category.id}
+                    label={category.category_name}
+                    value={category.id.toString()}
+                  />
+                ))}
+              </Picker>
+            </View>
             
             <Text style={styles.label}>Item Name</Text>
             <TextInput
@@ -487,20 +577,16 @@ const styles = StyleSheet.create({
     padding: 10,
     fontSize: 16,
   },
-  categorySelector: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  pickerContainer: {
     borderWidth: 1,
     borderColor: '#ddd',
     borderRadius: 5,
-    padding: 10,
     backgroundColor: 'white',
-    minHeight: 40,
+    overflow: 'hidden',
   },
-  categorySelectorText: {
-    fontSize: 16,
-    color: '#333',
+  picker: {
+    height: 50,
+    width: '100%',
   },
   modalButtons: {
     flexDirection: 'row',
@@ -529,6 +615,53 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 16,
     color: 'white',
+    fontWeight: 'bold',
+  },
+  menuActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 16,
+    paddingHorizontal: 8,
+  },
+  exportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1976d2',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    gap: 4,
+    flex: 1,
+    marginHorizontal: 4,
+    justifyContent: 'center',
+  },
+  importButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#388e3c',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    gap: 4,
+    flex: 1,
+    marginHorizontal: 4,
+    justifyContent: 'center',
+  },
+  clearButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#d32f2f',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    gap: 4,
+    flex: 1,
+    marginHorizontal: 4,
+    justifyContent: 'center',
+  },
+  actionButtonText: {
+    color: 'white',
+    fontSize: 12,
     fontWeight: 'bold',
   },
 })

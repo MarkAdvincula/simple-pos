@@ -369,6 +369,125 @@ class DatabaseService {
         return this.initialized && this.db !== null;
     }
 
+    async exportMenu() {
+        await this.init();
+
+        try {
+            const categoriesWithItems = await this.getCategoriesWithItems();
+
+            // Transform to exportable format
+            const menuData = {
+                version: "1.0",
+                exportDate: new Date().toISOString(),
+                categories: categoriesWithItems.map(category => ({
+                    name: category.category_name,
+                    items: category.items.map(item => ({
+                        name: item.item_name,
+                        price: item.price
+                    }))
+                }))
+            };
+
+            return menuData;
+        } catch (error) {
+            console.error('Error exporting menu:', error);
+            throw error;
+        }
+    }
+
+    async importMenu(menuData, replaceExisting = false) {
+        await this.init();
+
+        try {
+            // Validate menu data structure
+            if (!menuData || !menuData.categories || !Array.isArray(menuData.categories)) {
+                throw new Error('Invalid menu data format');
+            }
+
+            // If replacing existing menu, clear all categories and items
+            if (replaceExisting) {
+                await this.db.runAsync('DELETE FROM items');
+                await this.db.runAsync('DELETE FROM categories');
+            }
+
+            // Import categories and items
+            for (const category of menuData.categories) {
+                if (!category.name || !Array.isArray(category.items)) {
+                    continue; // Skip invalid categories
+                }
+
+                // Check if category already exists
+                let categoryId;
+                const existingCategory = await this.db.getFirstAsync(
+                    'SELECT id FROM categories WHERE category_name = ?',
+                    [category.name]
+                );
+
+                if (existingCategory) {
+                    categoryId = existingCategory.id;
+                } else {
+                    // Add new category
+                    const result = await this.db.runAsync(
+                        'INSERT INTO categories (category_name) VALUES (?)',
+                        [category.name]
+                    );
+                    categoryId = result.lastInsertRowId;
+                }
+
+                // Add items to the category
+                for (const item of category.items) {
+                    if (!item.name || item.price === undefined) {
+                        continue; // Skip invalid items
+                    }
+
+                    // Check if item already exists in this category
+                    const existingItem = await this.db.getFirstAsync(
+                        'SELECT id FROM items WHERE cid = ? AND item_name = ?',
+                        [categoryId, item.name]
+                    );
+
+                    if (!existingItem) {
+                        // Add new item
+                        await this.db.runAsync(
+                            'INSERT INTO items (cid, item_name, price) VALUES (?, ?, ?)',
+                            [categoryId, item.name, item.price]
+                        );
+                    } else if (replaceExisting) {
+                        // Update existing item if replacing
+                        await this.db.runAsync(
+                            'UPDATE items SET price = ? WHERE id = ?',
+                            [item.price, existingItem.id]
+                        );
+                    }
+                }
+            }
+
+            return {
+                success: true,
+                message: `Menu imported successfully. ${menuData.categories.length} categories processed.`
+            };
+        } catch (error) {
+            console.error('Error importing menu:', error);
+            throw error;
+        }
+    }
+
+    async clearMenu() {
+        await this.init();
+
+        try {
+            await this.db.runAsync('DELETE FROM items');
+            await this.db.runAsync('DELETE FROM categories');
+            return {
+                success: true,
+                message: 'Menu cleared successfully.'
+            };
+        } catch (error) {
+            console.error('Error clearing menu:', error);
+            throw error;
+        }
+    }
+
     // Method to close database (for cleanup)
     async close() {
         if (this.db) {
