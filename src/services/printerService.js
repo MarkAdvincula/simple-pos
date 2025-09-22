@@ -171,45 +171,6 @@ class PrinterService {
     }
     receiptText += '\n';
 
-    // Important Disclaimer
-    receiptText += '\x1B\x61\x01'; // Center align
-    receiptText += '\x1B\x21\x30'; // Set double height and width
-    receiptText += '********************************\n';
-    receiptText += '\x1B\x21\x00'; // Reset to normal size
-    receiptText += '\n';
-    receiptText += '\x1B\x21\x10'; // Set double height
-    receiptText += 'THIS IS NOT AN OFFICIAL RECEIPT\n';
-    receiptText += '\x1B\x21\x00'; // Reset to normal size
-    receiptText += '\n';
-    receiptText += 'THIS ONLY ACTS AS AN ORDER SLIP\n';
-    receiptText += 'FOR YOUR REFERENCE ONLY\n';
-    receiptText += '\n';
-    receiptText += '\x1B\x21\x10'; // Set double height
-    receiptText += 'ALWAYS ASK FOR AN\n';
-    receiptText += 'OFFICIAL RECEIPT\n';
-    receiptText += '\x1B\x21\x00'; // Reset to normal size
-    receiptText += '\n';
-    receiptText += '\x1B\x21\x30'; // Set double height and width
-    receiptText += '********************************\n';
-    receiptText += '\x1B\x21\x00'; // Reset to normal size
-    receiptText += '\n';
-
-    // QR Code Section
-    receiptText += 'Visit our website:\n';
-
-    // Create QR code
-    const qrData = 'https://ceciliakitchencafe.com';
-    receiptText += this.addQRCode(qrData);
-
-    receiptText += '\n';
-    receiptText += 'ceciliakitchencafe.com\n';
-    receiptText += '\n';
-
-    // Footer
-    receiptText += '================================\n';
-    receiptText += 'Visit us again soon!\n';
-    receiptText += '================================\n';
-
     // Cut paper and add spacing
     receiptText += '\n\n\n';
     receiptText += '\x1D\x56\x00'; // Full cut
