@@ -198,6 +198,35 @@ const MenuScreen = ({ navigation }) => {
       color: '#6b7280',
       textAlign: 'center',
     },
+    emptyMenuTitle: {
+      fontSize: isPhone ? 18 : 24,
+      fontWeight: 'bold',
+      color: '#374151',
+      marginTop: 16,
+      textAlign: 'center',
+    },
+    emptyMenuText: {
+      fontSize: isPhone ? 14 : 16,
+      color: '#6b7280',
+      textAlign: 'center',
+      marginTop: 8,
+      marginBottom: 24,
+      paddingHorizontal: 20,
+    },
+    goToMaintenanceButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#2e7d32',
+      paddingHorizontal: 20,
+      paddingVertical: 12,
+      borderRadius: 8,
+      gap: 8,
+    },
+    goToMaintenanceText: {
+      color: 'white',
+      fontSize: 16,
+      fontWeight: 'bold',
+    },
   });
 
   return (
@@ -223,6 +252,21 @@ const MenuScreen = ({ navigation }) => {
             <View style={styles.loadingContainer}>
               <Text style={dynamicStyles.loadingText}>Loading menu...</Text>
             </View>
+          ) : Object.keys(menu).length === 0 ? (
+            <View style={styles.emptyMenuContainer}>
+              <Ionicons name="restaurant-outline" size={64} color="#9ca3af" />
+              <Text style={dynamicStyles.emptyMenuTitle}>No Menu Items</Text>
+              <Text style={dynamicStyles.emptyMenuText}>
+                Add categories and items in the Maintenance screen to get started.
+              </Text>
+              <TouchableOpacity
+                style={dynamicStyles.goToMaintenanceButton}
+                onPress={() => navigation.navigate('Maintenance')}
+              >
+                <Ionicons name="settings-outline" size={20} color="white" />
+                <Text style={dynamicStyles.goToMaintenanceText}>Go to Maintenance</Text>
+              </TouchableOpacity>
+            </View>
           ) : (
             Object.entries(menu).map(([category, items]) => (
               <View key={category} style={styles.categoryContainer}>
@@ -236,7 +280,7 @@ const MenuScreen = ({ navigation }) => {
                       activeOpacity={0.7}
                     >
                       <Text style={dynamicStyles.itemName}>{item.name}</Text>
-                      <Text style={dynamicStyles.itemPrice}>₱{item.price.toFixed(2)}</Text>
+                      <Text style={dynamicStyles.itemPrice}>P{item.price.toFixed(2)}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -423,6 +467,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  emptyMenuContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
