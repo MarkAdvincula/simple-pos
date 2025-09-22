@@ -1,5 +1,6 @@
 // ./src/services/transactionService.js
 import databaseService from './database';
+import syncService from './syncService';
 
 class TransactionService {
   // Process and save transaction with date
@@ -21,6 +22,15 @@ class TransactionService {
         status: 'success',
         ...paymentDetails
       };
+
+      // Queue transaction for API sync
+      try {
+        await syncService.queueForSync(transactionData);
+        console.log('✅ Transaction queued for sync to server');
+      } catch (syncError) {
+        console.error('❌ Failed to queue transaction for sync:', syncError);
+        // Don't fail the transaction if sync fails - just log it
+      }
 
       return {
         success: true,
@@ -135,6 +145,56 @@ class TransactionService {
       return await databaseService.deleteTransaction(id);
     } catch (error) {
       console.error('Error deleting transaction:', error);
+      throw error;
+    }
+  }
+
+  // Sync management methods
+  async getSyncStatus() {
+    try {
+      return await syncService.getSyncStatus();
+    } catch (error) {
+      console.error('Error getting sync status:', error);
+      throw error;
+    }
+  }
+
+  async syncNow() {
+    try {
+      await syncService.syncNow();
+      console.log('Manual sync completed');
+    } catch (error) {
+      console.error('Error during manual sync:', error);
+      throw error;
+    }
+  }
+
+  async retryFailedSyncs() {
+    try {
+      await syncService.retryFailedTransactions();
+      console.log('Failed sync retry initiated');
+    } catch (error) {
+      console.error('Error retrying failed syncs:', error);
+      throw error;
+    }
+  }
+
+  async clearSyncQueue() {
+    try {
+      await syncService.clearSyncQueue();
+      console.log('Sync queue cleared');
+    } catch (error) {
+      console.error('Error clearing sync queue:', error);
+      throw error;
+    }
+  }
+
+  async testSync() {
+    try {
+      await syncService.testSync();
+      console.log('Test sync transaction created');
+    } catch (error) {
+      console.error('Error creating test sync:', error);
       throw error;
     }
   }

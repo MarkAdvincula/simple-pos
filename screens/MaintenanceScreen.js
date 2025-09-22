@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { Picker } from '@react-native-picker/picker'
 import databaseService from '../src/services/database'
 import menuExportService from '../src/services/menuExportService'
+import SyncManager from '../src/components/SyncManager'
 
 const MaintenanceScreen = () => {
   const [categories, setCategories] = useState([])
@@ -26,6 +27,9 @@ const MaintenanceScreen = () => {
   // Add category modal states
   const [addCategoryModalVisible, setAddCategoryModalVisible] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState('')
+
+  // Sync manager modal state
+  const [syncManagerVisible, setSyncManagerVisible] = useState(false)
 
   useEffect(() => {
     loadCategoriesWithItems()
@@ -325,6 +329,10 @@ const MaintenanceScreen = () => {
           <Ionicons name="trash-outline" size={18} color="white" />
           <Text style={styles.actionButtonText}>Clear All</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.syncButton} onPress={() => setSyncManagerVisible(true)}>
+          <Ionicons name="sync-outline" size={18} color="white" />
+          <Text style={styles.actionButtonText}>Sync</Text>
+        </TouchableOpacity>
       </View>
       
       <FlatList
@@ -464,6 +472,12 @@ const MaintenanceScreen = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Sync Manager Modal */}
+      <SyncManager
+        visible={syncManagerVisible}
+        onClose={() => setSyncManagerVisible(false)}
+      />
     </SafeAreaView>
   )
 }
@@ -651,6 +665,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#d32f2f',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    gap: 4,
+    flex: 1,
+    marginHorizontal: 4,
+    justifyContent: 'center',
+  },
+  syncButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#7b1fa2',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
