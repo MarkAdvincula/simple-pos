@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,6 +27,7 @@ const PaymentScreen = ({ route, navigation }) => {
   const [connectedPrinter, setConnectedPrinter] = useState(null);
   const [isPrinting, setIsPrinting] = useState(false);
   const [printerRequired, setPrinterRequired] = useState(true);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   useEffect(() => {
     loadPrinter();
@@ -51,6 +53,11 @@ const PaymentScreen = ({ route, navigation }) => {
   };
 
   const handlePayment = (method) => {
+    // Prevent multiple payment attempts
+    if (isProcessingPayment) {
+      return;
+    }
+
     // Check if printer is required and not available
     if (printerRequired && !printerService.isPrinterAvailable()) {
       Alert.alert(
@@ -64,10 +71,14 @@ const PaymentScreen = ({ route, navigation }) => {
       return;
     }
 
+    setIsProcessingPayment(true);
+
     if (method === 'Gcash' || method === 'BPI') {
       navigation.navigate('QR', { total, method, cart });
+      setIsProcessingPayment(false);
     } else if (method === 'Cash') {
       setShowCashKeypad(true);
+      setIsProcessingPayment(false);
     } else {
       // Handle other payment methods
       processPayment(method);
@@ -76,13 +87,14 @@ const PaymentScreen = ({ route, navigation }) => {
 
   const handleCashPayment = async ({ received, change, isExactPayment }) => {
     const totalAmount = parseFloat(total);
-    
+    setIsProcessingPayment(true);
+
     try {
       // Process transaction using transaction service
       const transactionResult = await transactionService.processCashTransaction(
-        cart, 
-        totalAmount, 
-        received, 
+        cart,
+        totalAmount,
+        received,
         change
       );
 
@@ -90,7 +102,7 @@ const PaymentScreen = ({ route, navigation }) => {
         // Create receipt data
         const receiptData = transactionService.createReceiptData(transactionResult, cart);
         setPaymentDetails(receiptData);
-        
+
         // Print receipt after successful payment
         await printReceipt(receiptData);
       } else {
@@ -115,6 +127,8 @@ const PaymentScreen = ({ route, navigation }) => {
         status: 'error',
         error: error.message
       });
+    } finally {
+      setIsProcessingPayment(false);
     }
 
     setShowCashKeypad(false);
@@ -125,9 +139,9 @@ const PaymentScreen = ({ route, navigation }) => {
     try {
       // Process transaction using transaction service
       const transactionResult = await transactionService.processDigitalPayment(
-        cart, 
-        total, 
-        method, 
+        cart,
+        total,
+        method,
         additionalData
       );
 
@@ -135,10 +149,10 @@ const PaymentScreen = ({ route, navigation }) => {
         // Create receipt data
         const receiptData = transactionService.createReceiptData(transactionResult, cart);
         setPaymentDetails(receiptData);
-        
+
         // Print receipt after successful payment
         await printReceipt(receiptData);
-        
+
         setShowPaymentModal(true);
       } else {
         throw new Error(transactionResult.error || 'Transaction failed');
@@ -146,6 +160,8 @@ const PaymentScreen = ({ route, navigation }) => {
     } catch (error) {
       console.error('Payment processing failed:', error);
       Alert.alert('Payment Error', 'Failed to process payment. Please try again.');
+    } finally {
+      setIsProcessingPayment(false);
     }
   };
 
@@ -235,29 +251,44 @@ const PaymentScreen = ({ route, navigation }) => {
 
         <View style={styles.paymentOptions}>
           <TouchableOpacity
-            style={[styles.paymentButton, { backgroundColor: '#2563eb' }]}
+            style={[styles.paymentButton, { backgroundColor: isProcessingPayment ? '#9ca3af' : '#2563eb' }]}
             onPress={() => handlePayment('Gcash')}
             activeOpacity={0.8}
+            disabled={isProcessingPayment}
           >
-            <Ionicons name="qr-code" size={32} color="#ffffff" />
+            {isProcessingPayment ? (
+              <ActivityIndicator size={32} color="#ffffff" />
+            ) : (
+              <Ionicons name="qr-code" size={32} color="#ffffff" />
+            )}
             <Text style={styles.paymentButtonText}>GCash</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.paymentButton, { backgroundColor: '#dc2626' }]}
+            style={[styles.paymentButton, { backgroundColor: isProcessingPayment ? '#9ca3af' : '#dc2626' }]}
             onPress={() => handlePayment('BPI')}
             activeOpacity={0.8}
+            disabled={isProcessingPayment}
           >
-            <Ionicons name="card" size={32} color="#ffffff" />
+            {isProcessingPayment ? (
+              <ActivityIndicator size={32} color="#ffffff" />
+            ) : (
+              <Ionicons name="card" size={32} color="#ffffff" />
+            )}
             <Text style={styles.paymentButtonText}>BPI</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.paymentButton, { backgroundColor: '#16a34a' }]}
+            style={[styles.paymentButton, { backgroundColor: isProcessingPayment ? '#9ca3af' : '#16a34a' }]}
             onPress={() => handlePayment('Cash')}
             activeOpacity={0.8}
+            disabled={isProcessingPayment}
           >
-            <Ionicons name="cash" size={32} color="#ffffff" />
+            {isProcessingPayment ? (
+              <ActivityIndicator size={32} color="#ffffff" />
+            ) : (
+              <Ionicons name="cash" size={32} color="#ffffff" />
+            )}
             <Text style={styles.paymentButtonText}>Cash</Text>
           </TouchableOpacity>
 

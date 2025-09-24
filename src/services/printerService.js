@@ -133,6 +133,7 @@ class PrinterService {
   createReceiptData(paymentData, cart = []) {
     const now = new Date();
     const dateStr = `${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getDate().toString().padStart(2, '0')}/${now.getFullYear()}`;
+    const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 
     let receiptText = '';
 
@@ -143,6 +144,7 @@ class PrinterService {
     receiptText += '\x1B\x61\x01'; // Center align
     receiptText += `ORDER RECEIPT #${paymentData.transactionId || 'N/A'}\n`;
     receiptText += `${dateStr}\n`;
+    receiptText += `${timeStr}\n`;
     receiptText += '\x1B\x61\x00'; // Left align
     receiptText += '\n';
 
@@ -182,7 +184,7 @@ class PrinterService {
   createTestReceipt() {
     const now = new Date();
     const dateStr = now.toLocaleDateString();
-    const timeStr = now.toLocaleTimeString();
+    const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 
     let receiptText = '';
 
