@@ -6,7 +6,10 @@ class ApiConfigService {
     // Default configuration
     this.defaultConfig = {
       // API Base URL - change this to your server's URL
-      baseUrl: 'http://192.168.100.124:3000/api',
+      // For production, use your live server URL
+      baseUrl: 'https://your-api-domain.com/api', // Update this with your actual domain
+      // For local development, use:
+      // baseUrl: 'http://192.168.100.124:3000/api',
       // Store ID - should be configured per installation
       storeId: '1',
       // Sync settings
