@@ -47,9 +47,21 @@ class DatabaseService {
                     transaction_datetime TEXT NOT NULL,
                     total_amount REAL NOT NULL,
                     payment_method TEXT,
+                    status TEXT DEFAULT 'COMPLETED',
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 );
             `);
+
+            // Add status column to existing table if it doesn't exist
+            try {
+                await this.db.execAsync(`
+                    ALTER TABLE transactions_tbl
+                    ADD COLUMN status TEXT DEFAULT 'COMPLETED'
+                `);
+            } catch (error) {
+                // Column might already exist, ignore the error
+                console.log('Status column might already exist:', error.message);
+            }
 
             // Create transaction items table
             await this.db.execAsync(`
@@ -190,7 +202,7 @@ class DatabaseService {
         }
     }
 
-    async addTransaction(items, paymentMethod) {
+    async addTransaction(items, paymentMethod, status = 'COMPLETED') {
         await this.init(); // Ensure database is initialized
 
         const totalAmount = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -200,8 +212,8 @@ class DatabaseService {
 
             // Start transaction
             const result = await this.db.runAsync(
-                'INSERT INTO transactions_tbl (transaction_datetime, total_amount, payment_method) VALUES (?, ?, ?)',
-                [datetime, totalAmount, paymentMethod]
+                'INSERT INTO transactions_tbl (transaction_datetime, total_amount, payment_method, status) VALUES (?, ?, ?, ?)',
+                [datetime, totalAmount, paymentMethod, status]
             );
 
             const transactionId = result.lastInsertRowId;
@@ -228,11 +240,12 @@ class DatabaseService {
         try {
             
             const transactions = await this.db.getAllAsync(`
-                SELECT 
+                SELECT
                     t.id,
                     t.transaction_datetime,
                     t.total_amount,
                     t.payment_method,
+                    t.status,
                     t.created_at
                 FROM transactions_tbl t
                 ORDER BY t.transaction_datetime DESC
@@ -290,11 +303,12 @@ class DatabaseService {
 
         try {
             const transactions = await this.db.getAllAsync(`
-                SELECT 
+                SELECT
                     t.id,
                     t.transaction_datetime,
                     t.total_amount,
-                    t.payment_method
+                    t.payment_method,
+                    t.status
                 FROM transactions_tbl t
                 WHERE t.transaction_datetime BETWEEN ? AND ?
                 ORDER BY t.transaction_datetime DESC
@@ -325,10 +339,11 @@ class DatabaseService {
 
         try {
             const summary = await this.db.getFirstAsync(`
-                SELECT 
+                SELECT
                     COUNT(*) as total_transactions,
-                    SUM(total_amount) as total_sales,
-                    AVG(total_amount) as average_sale
+                    SUM(CASE WHEN status != 'VOID' THEN total_amount ELSE 0 END) as total_sales,
+                    AVG(CASE WHEN status != 'VOID' THEN total_amount ELSE NULL END) as average_sale,
+                    COUNT(CASE WHEN status = 'VOID' THEN 1 END) as void_count
                 FROM transactions_tbl
                 WHERE transaction_datetime BETWEEN ? AND ?
             `, [startDate, endDate]);
@@ -348,6 +363,34 @@ class DatabaseService {
             await this.db.runAsync('DELETE FROM transactions_tbl WHERE id = ?', [id]);
         } catch (error) {
             console.error('Error deleting transaction:', error);
+            throw error;
+        }
+    }
+
+    async voidTransaction(id) {
+        await this.init();
+
+        try {
+            await this.db.runAsync(
+                'UPDATE transactions_tbl SET status = ? WHERE id = ?',
+                ['VOID', id]
+            );
+        } catch (error) {
+            console.error('Error voiding transaction:', error);
+            throw error;
+        }
+    }
+
+    async updateTransactionStatus(id, status) {
+        await this.init();
+
+        try {
+            await this.db.runAsync(
+                'UPDATE transactions_tbl SET status = ? WHERE id = ?',
+                [status, id]
+            );
+        } catch (error) {
+            console.error('Error updating transaction status:', error);
             throw error;
         }
     }

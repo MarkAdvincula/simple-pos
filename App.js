@@ -11,6 +11,7 @@ import QRConfiguration from './screens/QRConfiguration';
 import RecordsScreen from './screens/RecordsScreen';
 import MaintenanceScreen from './screens/MaintenanceScreen';
 import PrintersScreen from './screens/PrintersScreen';
+import EditTransactionScreen from './screens/EditTransactionScreen';
 import { Dimensions } from 'react-native';
 import { ScreenProvider, useScreen } from './src/contexts/ScreenContext';
 
@@ -34,6 +35,7 @@ export default function App() {
         <Stack.Screen name="Printers" component={PrintersScreen} />
         <Stack.Screen name="Maintenance" component={MaintenanceScreen} />
         <Stack.Screen name="Records" component={RecordsScreen} />
+        <Stack.Screen name="EditTransaction" component={EditTransactionScreen} />
         <Stack.Screen name="Payment" component={PaymentScreen} />
         <Stack.Screen name="QR" component={QRScreen} />
         <Stack.Screen name="ConfigQR" component={QRConfiguration} />

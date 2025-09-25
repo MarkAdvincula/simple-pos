@@ -8,10 +8,11 @@ import {
   TextInput,
   ScrollView,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { useScreen } from '../contexts/ScreenContext';
 
-const PaymentCash = ({ total, onBack, onComplete }) => {
+const PaymentCash = ({ total, onBack, onComplete, isPrinting = false, isProcessingPayment = false }) => {
   const [amountReceived, setAmountReceived] = useState('');
   const { isLargeTablet } = useScreen();
 
@@ -121,31 +122,47 @@ const PaymentCash = ({ total, onBack, onComplete }) => {
     </>
   );
 
-  const ActionButtons = () => (
-    <View style={styles.cashButtonContainer}>
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={onBack}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.backButtonText}>Back</Text>
-      </TouchableOpacity>
+  const ActionButtons = () => {
+    const isDisabled = isInsufficientAmount || isPrinting || isProcessingPayment;
+    const buttonText = isPrinting ? 'Printing...' :
+                      isProcessingPayment ? 'Processing...' :
+                      receivedAmount === 0 ? 'Exact Payment' : 'Complete Payment';
 
-      <TouchableOpacity
-        style={[
-          styles.completeButton,
-          isInsufficientAmount && styles.disabledButton
-        ]}
-        onPress={handleComplete}
-        disabled={isInsufficientAmount}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.completeButtonText}>
-          {receivedAmount === 0 ? 'Exact Payment' : 'Complete Payment'}
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
+    return (
+      <View style={styles.cashButtonContainer}>
+        <TouchableOpacity
+          style={[
+            styles.backButton,
+            (isPrinting || isProcessingPayment) && styles.disabledButton
+          ]}
+          onPress={onBack}
+          activeOpacity={0.8}
+          disabled={isPrinting || isProcessingPayment}
+        >
+          <Text style={styles.backButtonText}>Back</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.completeButton,
+            isDisabled && styles.disabledButton
+          ]}
+          onPress={handleComplete}
+          disabled={isDisabled}
+          activeOpacity={0.8}
+        >
+          <View style={styles.completeButtonContent}>
+            {(isPrinting || isProcessingPayment) && (
+              <ActivityIndicator size="small" color="#ffffff" style={{ marginRight: 8 }} />
+            )}
+            <Text style={styles.completeButtonText}>
+              {buttonText}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
   if (isLargeTablet) {
     return (
@@ -357,6 +374,11 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 8,
     alignItems: 'center',
+  },
+  completeButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   completeButtonText: {
     color: '#ffffff',
