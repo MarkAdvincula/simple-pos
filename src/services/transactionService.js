@@ -5,9 +5,12 @@ class TransactionService {
   // Process and save transaction with date
   async processTransaction(cart, paymentMethod, paymentDetails = {}) {
     try {
+      // Determine transaction status
+      const status = paymentDetails.status || 'COMPLETED';
+
       // Save to database using your existing method
-      const transactionId = await databaseService.addTransaction(cart, paymentMethod);
-      
+      const transactionId = await databaseService.addTransaction(cart, paymentMethod, status);
+
       // Create transaction data with timestamp
       const now = new Date();
       const transactionData = {
@@ -18,7 +21,8 @@ class TransactionService {
         timestamp: now.toISOString(),
         date: now.toLocaleDateString(),
         time: now.toLocaleTimeString(),
-        status: 'success',
+        status: status === 'COMPLETED' ? 'success' : status.toLowerCase(),
+        dbStatus: status,
         ...paymentDetails
       };
 
@@ -85,7 +89,7 @@ class TransactionService {
       total: `₱${transactionData.total?.toFixed(2) || transactionData.total_amount?.toFixed(2)}`,
       date: transactionData.date || new Date(transactionData.transaction_datetime).toLocaleDateString(),
       time: transactionData.time || new Date(transactionData.transaction_datetime).toLocaleTimeString(),
-      status: transactionData.status || 'completed'
+      status: transactionData.status || transactionData.dbStatus || 'COMPLETED'
     };
   }
 
@@ -135,6 +139,37 @@ class TransactionService {
       return await databaseService.deleteTransaction(id);
     } catch (error) {
       console.error('Error deleting transaction:', error);
+      throw error;
+    }
+  }
+
+  // Void transaction (mark as VOID instead of deleting)
+  async voidTransaction(id) {
+    try {
+      return await databaseService.voidTransaction(id);
+    } catch (error) {
+      console.error('Error voiding transaction:', error);
+      throw error;
+    }
+  }
+
+  // Process internal consumption transaction
+  async processInternalConsumption(cart, consumptionType = 'HOUSE') {
+    const paymentDetails = {
+      total: cart.reduce((sum, item) => sum + (item.price * item.quantity), 0),
+      method: consumptionType,
+      status: 'HOUSE'
+    };
+
+    return await this.processTransaction(cart, consumptionType.toLowerCase(), paymentDetails);
+  }
+
+  // Update transaction status
+  async updateTransactionStatus(id, status) {
+    try {
+      return await databaseService.updateTransactionStatus(id, status);
+    } catch (error) {
+      console.error('Error updating transaction status:', error);
       throw error;
     }
   }

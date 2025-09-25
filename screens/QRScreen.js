@@ -7,6 +7,7 @@ import {
   Image,
   Dimensions,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -21,6 +22,8 @@ const QRScreen = ({ route, navigation }) => {
   const [paymentDetails, setPaymentDetails] = useState();
   const [screenData, setScreenData] = useState(Dimensions.get('window'));
   const [printerRequired, setPrinterRequired] = useState(true);
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const isPhone = screenData.width < 768;
 
   useEffect( () => {
@@ -64,6 +67,11 @@ const QRScreen = ({ route, navigation }) => {
   }
 
   const confirmPayment = async (camera) => {
+    // Prevent multiple payment attempts
+    if (isProcessingPayment) {
+      return;
+    }
+
     // Check if printer is required and not available
     if (printerRequired && !printerService.isPrinterAvailable()) {
       Alert.alert(
@@ -77,6 +85,8 @@ const QRScreen = ({ route, navigation }) => {
       return;
     }
 
+    setIsProcessingPayment(true);
+
     try{
       const transactionId = await databaseService.addTransaction(cart, method);
       const paymentData = {
@@ -89,10 +99,13 @@ const QRScreen = ({ route, navigation }) => {
 
       // Print receipt if printer is available and required
       if (printerRequired && printerService.isPrinterAvailable()) {
+        setIsPrinting(true);
         try {
           await printerService.printReceipt(paymentData, cart);
         } catch (printError) {
           console.error('Print failed:', printError);
+        } finally {
+          setIsPrinting(false);
         }
       }
 
@@ -105,6 +118,8 @@ const QRScreen = ({ route, navigation }) => {
         error: error.message
       });
       console.error('Payment failed:', error);
+    } finally {
+      setIsProcessingPayment(false);
     }
   }
 
@@ -133,21 +148,40 @@ const QRScreen = ({ route, navigation }) => {
         <Text style={styles.instruction}>Scan QR Code to Pay</Text>
         <Text style={styles.totalAmount}>₱{total}</Text>
         <TouchableOpacity
-                style={styles.completeButton}
+                style={[
+                  styles.completeButton,
+                  (isProcessingPayment || isPrinting) && styles.buttonDisabled
+                ]}
                 onPress={() => confirmPayment(false)}
                 activeOpacity={0.8}
+                disabled={isProcessingPayment || isPrinting}
               >
-                          <Ionicons name="cash" size={24} color="#ffffff" />
-
-                <Text style={styles.completeButtonText}>Complete Payment</Text>
+                {isProcessingPayment || isPrinting ? (
+                  <ActivityIndicator size={24} color="#ffffff" />
+                ) : (
+                  <Ionicons name="cash" size={24} color="#ffffff" />
+                )}
+                <Text style={styles.completeButtonText}>
+                  {isPrinting ? 'Printing...' : isProcessingPayment ? 'Processing...' : 'Complete Payment'}
+                </Text>
               </TouchableOpacity>
         <TouchableOpacity
-          style={styles.cameraButton}
+          style={[
+            styles.cameraButton,
+            (isProcessingPayment || isPrinting) && styles.buttonDisabled
+          ]}
           onPress={() => confirmPayment(true)}
           activeOpacity={0.8}
+          disabled={isProcessingPayment || isPrinting}
         >
-          <Ionicons name="camera" size={24} color="#ffffff" />
-          <Text style={styles.cameraButtonText}>Take Receipt Photos</Text>
+          {isProcessingPayment || isPrinting ? (
+            <ActivityIndicator size={24} color="#ffffff" />
+          ) : (
+            <Ionicons name="camera" size={24} color="#ffffff" />
+          )}
+          <Text style={styles.cameraButtonText}>
+            {isPrinting ? 'Printing...' : isProcessingPayment ? 'Processing...' : 'Take Receipt Photos'}
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.backButton}
@@ -249,6 +283,10 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  buttonDisabled: {
+    backgroundColor: '#9ca3af',
+    opacity: 0.7,
   },
 });
 

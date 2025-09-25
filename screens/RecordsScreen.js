@@ -128,7 +128,11 @@ const RecordsScreen = ({ navigation }) => {
             // Get all transactions and apply date filter
             const allTransactions = await databaseService.getTransactions();
             const filteredTransactions = filterTransactionsByDate(allTransactions);
-            const limitedTransactions = filteredTransactions.slice(0, LIMIT_SALES_FOR_PERFORMANCE); // Limit for performance
+            // Filter to only show COMPLETED transactions in summary
+            const completedTransactions = filteredTransactions.filter(transaction =>
+                !transaction.status || transaction.status.toUpperCase() === 'COMPLETED'
+            );
+            const limitedTransactions = completedTransactions.slice(0, LIMIT_SALES_FOR_PERFORMANCE); // Limit for performance
 
             const totalSales = limitedTransactions.reduce((sum, transaction) =>
                 sum + parseFloat(transaction.total_amount), 0
@@ -151,7 +155,11 @@ const RecordsScreen = ({ navigation }) => {
             // Load a limited set for performance and apply date filter
             const allTransactions = await databaseService.getTransactions();
             const filteredTransactions = filterTransactionsByDate(allTransactions);
-            const limitedTransactions = filteredTransactions.slice(0, LIMIT_SALES_FOR_PERFORMANCE); // Limit dataset
+            // Filter to only show COMPLETED transactions in top sales
+            const completedTransactions = filteredTransactions.filter(transaction =>
+                !transaction.status || transaction.status.toUpperCase() === 'COMPLETED'
+            );
+            const limitedTransactions = completedTransactions.slice(0, LIMIT_SALES_FOR_PERFORMANCE); // Limit dataset
 
             const salesRanking = calculateTopSales(limitedTransactions);
             setTopSales(salesRanking);
@@ -164,11 +172,15 @@ const RecordsScreen = ({ navigation }) => {
         try {
             const allTransactions = await databaseService.getTransactions();
             const filteredTransactions = filterTransactionsByDate(allTransactions);
+            // Filter to only show COMPLETED transactions in the list
+            const completedTransactions = filteredTransactions.filter(transaction =>
+                !transaction.status || transaction.status.toUpperCase() === 'COMPLETED'
+            );
 
             // Implement client-side pagination on filtered data
             const startIndex = (pageNum - 1) * ITEMS_PER_PAGE;
             const endIndex = startIndex + ITEMS_PER_PAGE;
-            const pageTransactions = filteredTransactions.slice(startIndex, endIndex);
+            const pageTransactions = completedTransactions.slice(startIndex, endIndex);
 
             const formattedTransactions = pageTransactions.map(transaction => ({
                 ...transaction,
@@ -181,8 +193,8 @@ const RecordsScreen = ({ navigation }) => {
                 setItems(prev => [...prev, ...formattedTransactions]);
             }
 
-            setHasMoreData(endIndex < filteredTransactions.length);
-            console.log(`Loaded page ${pageNum}: ${formattedTransactions.length} transactions (filtered)`);
+            setHasMoreData(endIndex < completedTransactions.length);
+            console.log(`Loaded page ${pageNum}: ${formattedTransactions.length} transactions (COMPLETED only)`);
 
         } catch (error) {
             console.error('Error loading transactions:', error);
@@ -440,7 +452,7 @@ const RecordsScreen = ({ navigation }) => {
         setShowExportModal(false);
 
         try {
-            // Get all transactions with current filter
+            // Get all transactions with current filter (includes ALL statuses for export)
             const allTransactions = await databaseService.getTransactions();
             const filteredTransactions = filterTransactionsByDate(allTransactions);
 
@@ -465,7 +477,7 @@ const RecordsScreen = ({ navigation }) => {
         setShowExportModal(false);
 
         try {
-            // Get all transactions with current filter
+            // Get all transactions with current filter (includes ALL statuses for export)
             const allTransactions = await databaseService.getTransactions();
             const filteredTransactions = filterTransactionsByDate(allTransactions);
 
@@ -529,6 +541,15 @@ const RecordsScreen = ({ navigation }) => {
                                 {getFilterDisplayText()}
                             </Text>
                             <Ionicons name="chevron-down" size={16} color="#2563eb" />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={styles.editButton}
+                            onPress={() => navigation.navigate('EditTransaction')}
+                            activeOpacity={0.8}
+                        >
+                            <Ionicons name="cog-outline" size={18} color="#ffffff" />
+                            <Text style={styles.editButtonText}>Edit</Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -758,7 +779,10 @@ const RecordsScreen = ({ navigation }) => {
                             Export your sales data for the selected period: {getFilterDisplayText()}
                         </Text>
                         <Text style={styles.exportInfo}>
-                            {totalSummary.total_transactions} transactions • ₱{totalSummary.total_sales.toFixed(2)} total sales
+                            {totalSummary.total_transactions} completed transactions • Export includes ALL transaction statuses
+                        </Text>
+                        <Text style={styles.exportInfo}>
+                            ₱{totalSummary.total_sales.toFixed(2)} total sales (completed only)
                         </Text>
 
                         <View style={styles.exportOptionsContainer}>
@@ -1292,6 +1316,27 @@ const styles = StyleSheet.create({
         color: '#ffffff',
         fontSize: 16,
         fontWeight: '600',
+    },
+
+    // Edit Button Styles
+    editButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#8b5cf6',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 10,
+        gap: 6,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    editButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#ffffff',
     },
 
     // Export Button Styles

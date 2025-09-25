@@ -208,6 +208,8 @@ const PaymentScreen = ({ route, navigation }) => {
           total={total}
           onBack={() => setShowCashKeypad(false)}
           onComplete={handleCashPayment}
+          isPrinting={isPrinting}
+          isProcessingPayment={isProcessingPayment}
         />
         <PaymentModal
           visible={showPaymentModal}

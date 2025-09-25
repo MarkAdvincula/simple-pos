@@ -236,16 +236,29 @@ const MenuScreen = ({ navigation }) => {
         <ScrollView style={dynamicStyles.menuSection} showsVerticalScrollIndicator={false}>
           <View style={styles.headerContainer}>
             <Text style={dynamicStyles.title}>Cecilia POS</Text>
-            <TouchableOpacity onPress={showSales}>
-              <Ionicons name="podium-outline" size={20} color="#ef4444" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={showPrinters}>
-              <Ionicons name="receipt-outline" size={20} color="#ef4444" />
-            </TouchableOpacity>
-            
-            <TouchableOpacity onPress={() => navigation.navigate('ConfigQR')}>
-              <Ionicons name="settings" size={20} color="gray" />
-            </TouchableOpacity>
+            <View style={styles.headerButtons}>
+              <TouchableOpacity
+                style={styles.headerButton}
+                onPress={showSales}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="analytics" size={18} color="#6b7280" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.headerButton}
+                onPress={showPrinters}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="print" size={18} color="#6b7280" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.headerButton}
+                onPress={() => navigation.navigate('ConfigQR')}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="settings" size={18} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {loading ? (
@@ -379,9 +392,33 @@ const styles = StyleSheet.create({
   },
   headerContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-evenly',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginTop: 24,
+    marginBottom: 24,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   categoryContainer: {
     marginBottom: 24,
