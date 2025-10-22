@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useScreen } from '../src/contexts/ScreenContext';
+import { useAuth } from '../src/contexts/AuthContext';
 import databaseService from '../src/services/database';
 
 const MenuScreen = ({ navigation }) => {
@@ -19,6 +20,7 @@ const MenuScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const screenDataRef = useRef(Dimensions.get('window'));
   const {isPhone, isSmallPhone,isLargeTablet} = useScreen();
+  const { user, logout, isAdmin, isCashier } = useAuth();
 
   useEffect(() => {
     const subscription = Dimensions.addEventListener('change', (result) => {
@@ -235,28 +237,44 @@ const MenuScreen = ({ navigation }) => {
         {/* Menu Section */}
         <ScrollView style={dynamicStyles.menuSection} showsVerticalScrollIndicator={false}>
           <View style={styles.headerContainer}>
-            <Text style={dynamicStyles.title}>Cecilia POS</Text>
+            <View style={styles.titleContainer}>
+              <Text style={dynamicStyles.title}>Cecilia POS</Text>
+              <Text style={styles.userInfo}>{user?.name || user?.email} ({isAdmin() ? 'Admin' : 'Cashier'})</Text>
+            </View>
             <View style={styles.headerButtons}>
+              {isAdmin() && (
+                <TouchableOpacity
+                  style={styles.headerButton}
+                  onPress={showSales}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="analytics" size={18} color="#6b7280" />
+                </TouchableOpacity>
+              )}
+              {isAdmin() && (
+                <TouchableOpacity
+                  style={styles.headerButton}
+                  onPress={showPrinters}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="print" size={18} color="#6b7280" />
+                </TouchableOpacity>
+              )}
+              {isAdmin() && (
+                <TouchableOpacity
+                  style={styles.headerButton}
+                  onPress={() => navigation.navigate('ConfigQR')}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="settings" size={18} color="#6b7280" />
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={styles.headerButton}
-                onPress={showSales}
+                onPress={logout}
                 activeOpacity={0.7}
               >
-                <Ionicons name="analytics" size={18} color="#6b7280" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.headerButton}
-                onPress={showPrinters}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="print" size={18} color="#6b7280" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.headerButton}
-                onPress={() => navigation.navigate('ConfigQR')}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="settings" size={18} color="#6b7280" />
+                <Ionicons name="log-out-outline" size={18} color="#ef4444" />
               </TouchableOpacity>
             </View>
           </View>
@@ -270,15 +288,17 @@ const MenuScreen = ({ navigation }) => {
               <Ionicons name="restaurant-outline" size={64} color="#9ca3af" />
               <Text style={dynamicStyles.emptyMenuTitle}>No Menu Items</Text>
               <Text style={dynamicStyles.emptyMenuText}>
-                Add categories and items in the Maintenance screen to get started.
+                {isAdmin() ? 'Add categories and items in the Maintenance screen to get started.' : 'No menu items available. Contact an administrator to add items.'}
               </Text>
-              <TouchableOpacity
-                style={dynamicStyles.goToMaintenanceButton}
-                onPress={() => navigation.navigate('Maintenance')}
-              >
-                <Ionicons name="settings-outline" size={20} color="white" />
-                <Text style={dynamicStyles.goToMaintenanceText}>Go to Maintenance</Text>
-              </TouchableOpacity>
+              {isAdmin() && (
+                <TouchableOpacity
+                  style={dynamicStyles.goToMaintenanceButton}
+                  onPress={() => navigation.navigate('Maintenance')}
+                >
+                  <Ionicons name="settings-outline" size={20} color="white" />
+                  <Text style={dynamicStyles.goToMaintenanceText}>Go to Maintenance</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             Object.entries(menu).map(([category, items]) => (
@@ -399,6 +419,14 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#f3f4f6',
+  },
+  titleContainer: {
+    flex: 1,
+  },
+  userInfo: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: 4,
   },
   headerButtons: {
     flexDirection: 'row',

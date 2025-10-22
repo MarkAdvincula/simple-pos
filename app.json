@@ -7,6 +7,7 @@
     "icon": "./assets/2-blktxt-nobg.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "scheme": "simplepos",
     "splash": {
       "image": "./assets/2-blktxt-nobg.png",
       "resizeMode": "contain",
