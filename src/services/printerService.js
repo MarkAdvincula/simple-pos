@@ -263,6 +263,108 @@ class PrinterService {
     return qrCommand;
   }
 
+  // Print sales summary
+  async printSummary(totalSummary, topSales, dateRangeText = 'All Time') {
+    if (!this.connectedPrinter || this.isPrinting) {
+      console.log('No printer available or already printing');
+      return { success: false, error: 'Printer not available or busy' };
+    }
+
+    this.isPrinting = true;
+    console.log('Printing sales summary');
+
+    try {
+      // Connect to printer
+      const connection = await BluetoothClassic.connectToDevice(this.connectedPrinter.address);
+      console.log('Connected to printer for summary');
+
+      // Create summary content
+      const summaryData = this.createSummaryData(totalSummary, topSales, dateRangeText);
+
+      // Send summary to printer
+      await connection.write(summaryData);
+      console.log('Summary sent to printer');
+
+      // Disconnect
+      await connection.disconnect();
+      console.log('Printer disconnected');
+
+      return { success: true };
+
+    } catch (error) {
+      console.error('Printing summary failed:', error);
+      return { success: false, error: error.message };
+    } finally {
+      this.isPrinting = false;
+    }
+  }
+
+  // Create summary data for printing
+  createSummaryData(totalSummary, topSales, dateRangeText) {
+    const now = new Date();
+    const dateStr = `${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getDate().toString().padStart(2, '0')}/${now.getFullYear()}`;
+
+    // Format time manually to avoid encoding issues
+    let hours = now.getHours();
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12; // 0 should be 12
+    const timeStr = `${hours}:${minutes} ${ampm}`;
+
+    let summaryText = '';
+
+    // Initialize printer
+    summaryText += '\x1B\x40'; // ESC @ - Initialize
+
+    // Header
+    summaryText += '\x1B\x61\x01'; // Center align
+    summaryText += '================================\n';
+    summaryText += 'SALES SUMMARY\n';
+    summaryText += '================================\n';
+    summaryText += `${dateRangeText}\n`;
+    summaryText += `${dateStr} ${timeStr}\n`;
+    summaryText += '\x1B\x61\x00'; // Left align
+    summaryText += '\n';
+
+    // Summary Statistics
+    summaryText += '--------------------------------\n';
+    summaryText += 'OVERVIEW\n';
+    summaryText += '--------------------------------\n';
+    summaryText += `Total Transactions: ${totalSummary.total_transactions}\n`;
+    summaryText += `Total Sales: P${totalSummary.total_sales.toFixed(2)}\n`;
+    summaryText += `Average Sale: P${totalSummary.average_sale.toFixed(2)}\n`;
+    summaryText += `# of Cups Sold: ${totalSummary.cups_sold}\n`;
+    summaryText += '\n';
+
+    // Top Sales (excluding items with 0 sales)
+    const topSalesFiltered = topSales.filter(item => item.totalQuantity > 0);
+
+    if (topSalesFiltered.length > 0) {
+      summaryText += '--------------------------------\n';
+      summaryText += 'TOP SALES\n';
+      summaryText += '--------------------------------\n';
+
+      topSalesFiltered.slice(0, 10).forEach((item, index) => {
+        summaryText += `${index + 1}. ${item.name}\n`;
+        summaryText += `   ${item.totalQuantity} sold - P${item.totalRevenue.toFixed(2)}\n`;
+      });
+      summaryText += '\n';
+    }
+
+    // Footer
+    summaryText += '--------------------------------\n';
+    summaryText += '\x1B\x61\x01'; // Center align
+    summaryText += 'End of Summary\n';
+    summaryText += '\x1B\x61\x00'; // Left align
+
+    // Cut paper and add spacing
+    summaryText += '\n\n\n';
+    summaryText += '\x1D\x56\x00'; // Full cut
+
+    return summaryText;
+  }
+
   // Get printing status
   getPrintingStatus() {
     return {

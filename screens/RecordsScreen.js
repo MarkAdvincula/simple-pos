@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import databaseService from '../src/services/database';
 import exportService from '../src/services/exportService';
+import printerService from '../src/services/printerService';
 
 const RecordsScreen = ({ navigation }) => {
 
@@ -15,7 +16,8 @@ const RecordsScreen = ({ navigation }) => {
     const [totalSummary, setTotalSummary] = useState({
         total_transactions: 0,
         total_sales: 0,
-        average_sale: 0
+        average_sale: 0,
+        cups_sold: 0
     });
     const [topSales, setTopSales] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -23,9 +25,11 @@ const RecordsScreen = ({ navigation }) => {
     const [hasMoreData, setHasMoreData] = useState(true);
 
     // Date filter states
-    const [dateFilter, setDateFilter] = useState('all'); // 'all', 'today', 'week', 'month', 'custom'
+    const [dateFilter, setDateFilter] = useState('today'); // 'all', 'today', 'day', 'week', 'month', 'custom'
     const [showStartDatePicker, setShowStartDatePicker] = useState(false);
     const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+    const [showDayPicker, setShowDayPicker] = useState(false);
+    const [selectedDay, setSelectedDay] = useState(new Date());
     const [customStartDate, setCustomStartDate] = useState(new Date());
     const [customEndDate, setCustomEndDate] = useState(new Date());
     const [showDateFilterModal, setShowDateFilterModal] = useState(false);
@@ -33,6 +37,9 @@ const RecordsScreen = ({ navigation }) => {
     // Export states
     const [isExporting, setIsExporting] = useState(false);
     const [showExportModal, setShowExportModal] = useState(false);
+
+    // Print states
+    const [isPrinting, setIsPrinting] = useState(false);
 
     const ITEMS_PER_PAGE = 20; // Pagination for better performance
 
@@ -49,7 +56,7 @@ const RecordsScreen = ({ navigation }) => {
         if (!loading) {
             loadInitialData();
         }
-    }, [dateFilter, customStartDate, customEndDate]);
+    }, [dateFilter, selectedDay, customStartDate, customEndDate]);
 
     // Date filter helper functions
     const getDateRange = useCallback(() => {
@@ -60,6 +67,12 @@ const RecordsScreen = ({ navigation }) => {
             case 'today':
                 startDate = new Date(now.setHours(0, 0, 0, 0));
                 endDate = new Date(now.setHours(23, 59, 59, 999));
+                break;
+            case 'day':
+                startDate = new Date(selectedDay);
+                startDate.setHours(0, 0, 0, 0);
+                endDate = new Date(selectedDay);
+                endDate.setHours(23, 59, 59, 999);
                 break;
             case 'week':
                 const startOfWeek = new Date(now);
@@ -86,7 +99,7 @@ const RecordsScreen = ({ navigation }) => {
         }
 
         return { startDate, endDate };
-    }, [dateFilter, customStartDate, customEndDate]);
+    }, [dateFilter, selectedDay, customStartDate, customEndDate]);
 
     const filterTransactionsByDate = useCallback((transactions) => {
         if (dateFilter === 'all') return transactions;
@@ -140,10 +153,36 @@ const RecordsScreen = ({ navigation }) => {
             const averageSale = limitedTransactions.length > 0 ?
                 totalSales / limitedTransactions.length : 0;
 
+            // Calculate cups sold (excluding add-ons)
+            // Load categories to create item-to-category mapping
+            const categoriesWithItems = await databaseService.getCategoriesWithItems();
+            const itemToCategoryMap = {};
+
+            categoriesWithItems.forEach(category => {
+                category.items.forEach(item => {
+                    itemToCategoryMap[item.item_name] = category.category_name;
+                });
+            });
+
+            // Count quantities excluding items from categories starting with "Add"
+            let cupsSold = 0;
+            limitedTransactions.forEach(transaction => {
+                if (transaction.items && transaction.items.length > 0) {
+                    transaction.items.forEach(item => {
+                        const categoryName = itemToCategoryMap[item.item_name];
+                        // Exclude if category starts with "Add" (case-insensitive)
+                        if (!categoryName || !categoryName.toLowerCase().startsWith('add')) {
+                            cupsSold += parseInt(item.quantity) || 0;
+                        }
+                    });
+                }
+            });
+
             setTotalSummary({
                 total_transactions: limitedTransactions.length,
                 total_sales: totalSales,
-                average_sale: averageSale
+                average_sale: averageSale,
+                cups_sold: cupsSold
             });
         } catch (error) {
             console.error('Error loading summary:', error);
@@ -407,6 +446,8 @@ const RecordsScreen = ({ navigation }) => {
         switch (dateFilter) {
             case 'today':
                 return 'Today';
+            case 'day':
+                return selectedDay.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
             case 'week':
                 return 'This Week';
             case 'month':
@@ -416,12 +457,12 @@ const RecordsScreen = ({ navigation }) => {
             default:
                 return 'All Time';
         }
-    }, [dateFilter, customStartDate, customEndDate]);
+    }, [dateFilter, selectedDay, customStartDate, customEndDate]);
 
     const handleDateFilterChange = useCallback((filter) => {
         setDateFilter(filter);
         setPage(1);
-        if (filter !== 'custom') {
+        if (filter !== 'custom' && filter !== 'day') {
             setShowDateFilterModal(false);
         }
     }, []);
@@ -430,6 +471,19 @@ const RecordsScreen = ({ navigation }) => {
         setDateFilter('custom');
         setPage(1);
         setShowDateFilterModal(false);
+    }, []);
+
+    const handleDayConfirm = useCallback(() => {
+        setDateFilter('day');
+        setPage(1);
+        setShowDateFilterModal(false);
+    }, []);
+
+    const onDayChange = useCallback((event, selectedDate) => {
+        setShowDayPicker(false);
+        if (selectedDate) {
+            setSelectedDay(selectedDate);
+        }
     }, []);
 
     const onStartDateChange = useCallback((event, selectedDate) => {
@@ -497,6 +551,30 @@ const RecordsScreen = ({ navigation }) => {
         }
     }, [dateFilter, customStartDate, customEndDate, totalSummary, topSales, filterTransactionsByDate]);
 
+    // Print summary function
+    const handlePrintSummary = useCallback(async () => {
+        setIsPrinting(true);
+
+        try {
+            // Initialize printer if needed
+            await printerService.loadStoredPrinter();
+
+            const dateRangeText = exportService.getDateRangeText(dateFilter, customStartDate, customEndDate);
+            const result = await printerService.printSummary(totalSummary, topSales, dateRangeText);
+
+            if (result.success) {
+                Alert.alert('Print Successful', 'Sales summary has been printed.');
+            } else {
+                Alert.alert('Print Failed', result.error || 'Could not print summary. Please check your printer connection.');
+            }
+        } catch (error) {
+            console.error('Print error:', error);
+            Alert.alert('Print Failed', 'An error occurred while printing the summary.');
+        } finally {
+            setIsPrinting(false);
+        }
+    }, [dateFilter, customStartDate, customEndDate, totalSummary, topSales]);
+
     if (loading && items.length === 0) {
         return (
             <SafeAreaView style={styles.container}>
@@ -554,6 +632,28 @@ const RecordsScreen = ({ navigation }) => {
 
                         <TouchableOpacity
                             style={[
+                                styles.printButton,
+                                (isPrinting || totalSummary.total_transactions === 0) && styles.printButtonDisabled
+                            ]}
+                            onPress={handlePrintSummary}
+                            activeOpacity={0.8}
+                            disabled={isPrinting || totalSummary.total_transactions === 0}
+                        >
+                            {isPrinting ? (
+                                <>
+                                    <Ionicons name="hourglass-outline" size={18} color="#9ca3af" />
+                                    <Text style={styles.printButtonTextDisabled}>Printing...</Text>
+                                </>
+                            ) : (
+                                <>
+                                    <Ionicons name="print-outline" size={18} color="#ffffff" />
+                                    <Text style={styles.printButtonText}>Print</Text>
+                                </>
+                            )}
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[
                                 styles.exportButton,
                                 (isExporting || totalSummary.total_transactions === 0) && styles.exportButtonDisabled
                             ]}
@@ -603,6 +703,10 @@ const RecordsScreen = ({ navigation }) => {
                                     <Text style={styles.summaryValue}>
                                         ₱{formatCurrency(totalSummary.average_sale)}
                                     </Text>
+                                </View>
+                                <View style={styles.summaryRow}>
+                                    <Text style={styles.summaryLabel}># of Cups Sold:</Text>
+                                    <Text style={styles.summaryValue}>{totalSummary.cups_sold}</Text>
                                 </View>
                             </View>
 
@@ -668,6 +772,7 @@ const RecordsScreen = ({ navigation }) => {
                             {[
                                 { key: 'all', label: 'All Time', icon: 'infinite-outline' },
                                 { key: 'today', label: 'Today', icon: 'today-outline' },
+                                { key: 'day', label: 'Select Day', icon: 'calendar-outline' },
                                 { key: 'week', label: 'This Week', icon: 'calendar-outline' },
                                 { key: 'month', label: 'This Month', icon: 'calendar-outline' },
                                 { key: 'custom', label: 'Custom Range', icon: 'options-outline' }
@@ -698,6 +803,29 @@ const RecordsScreen = ({ navigation }) => {
                                 </TouchableOpacity>
                             ))}
                         </View>
+
+                        {dateFilter === 'day' && (
+                            <View style={styles.customDateContainer}>
+                                <Text style={styles.customDateLabel}>Select Day</Text>
+
+                                <TouchableOpacity
+                                    style={styles.dateButton}
+                                    onPress={() => setShowDayPicker(true)}
+                                >
+                                    <Ionicons name="calendar" size={16} color="#6b7280" />
+                                    <Text style={styles.dateButtonText}>
+                                        {selectedDay.toLocaleDateString()}
+                                    </Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={styles.confirmCustomDateButton}
+                                    onPress={handleDayConfirm}
+                                >
+                                    <Text style={styles.confirmCustomDateText}>Apply Day</Text>
+                                </TouchableOpacity>
+                            </View>
+                        )}
 
                         {dateFilter === 'custom' && (
                             <View style={styles.customDateContainer}>
@@ -738,6 +866,15 @@ const RecordsScreen = ({ navigation }) => {
             </Modal>
 
             {/* Date Pickers */}
+            {showDayPicker && (
+                <DateTimePicker
+                    value={selectedDay}
+                    mode="date"
+                    display="default"
+                    onChange={onDayChange}
+                />
+            )}
+
             {showStartDatePicker && (
                 <DateTimePicker
                     value={customStartDate}
@@ -1337,6 +1474,37 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '600',
         color: '#ffffff',
+    },
+
+    // Print Button Styles
+    printButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f59e0b',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 10,
+        gap: 6,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    printButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#ffffff',
+    },
+    printButtonTextDisabled: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#9ca3af',
+    },
+    printButtonDisabled: {
+        backgroundColor: '#f3f4f6',
+        borderWidth: 1,
+        borderColor: '#e5e7eb',
     },
 
     // Export Button Styles
