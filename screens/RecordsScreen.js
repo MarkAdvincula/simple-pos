@@ -510,7 +510,7 @@ const RecordsScreen = ({ navigation }) => {
             const allTransactions = await databaseService.getTransactions();
             const filteredTransactions = filterTransactionsByDate(allTransactions);
 
-            const dateRangeText = exportService.getDateRangeText(dateFilter, customStartDate, customEndDate);
+            const dateRangeText = exportService.getDateRangeText(dateFilter, customStartDate, customEndDate, selectedDay);
             const result = await exportService.exportToCSV(filteredTransactions, totalSummary, topSales, dateRangeText);
 
             if (result.success) {
@@ -535,7 +535,7 @@ const RecordsScreen = ({ navigation }) => {
             const allTransactions = await databaseService.getTransactions();
             const filteredTransactions = filterTransactionsByDate(allTransactions);
 
-            const dateRangeText = exportService.getDateRangeText(dateFilter, customStartDate, customEndDate);
+            const dateRangeText = exportService.getDateRangeText(dateFilter, customStartDate, customEndDate, selectedDay);
             const result = await exportService.exportToExcel(filteredTransactions, totalSummary, topSales, dateRangeText);
 
             if (result.success) {
@@ -559,7 +559,7 @@ const RecordsScreen = ({ navigation }) => {
             // Initialize printer if needed
             await printerService.loadStoredPrinter();
 
-            const dateRangeText = exportService.getDateRangeText(dateFilter, customStartDate, customEndDate);
+            const dateRangeText = exportService.getDateRangeText(dateFilter, customStartDate, customEndDate, selectedDay);
             const result = await printerService.printSummary(totalSummary, topSales, dateRangeText);
 
             if (result.success) {
@@ -1360,7 +1360,7 @@ const styles = StyleSheet.create({
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
         paddingHorizontal: 20,
-        paddingBottom: 40,
+        paddingBottom: 60,
         maxHeight: '80%',
     },
     modalHeader: {
@@ -1415,6 +1415,7 @@ const styles = StyleSheet.create({
         borderTopWidth: 1,
         borderTopColor: '#e5e7eb',
         paddingTop: 20,
+        paddingBottom: 20,
     },
     customDateLabel: {
         fontSize: 16,
@@ -1448,6 +1449,7 @@ const styles = StyleSheet.create({
         paddingVertical: 14,
         borderRadius: 8,
         alignItems: 'center',
+        marginTop: 20,
     },
     confirmCustomDateText: {
         color: '#ffffff',
