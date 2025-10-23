@@ -9,16 +9,16 @@ export const ScreenProvider = ({ children }) => {
   const [screenData, setScreenData] = useState(() => {
     const initial = Dimensions.get('window');
     return {
-      width: Math.max(initial.width, initial.height),
-      height: Math.min(initial.width, initial.height)
+      width: initial.width,
+      height: initial.height
     };
   });
 
   useEffect(() => {
     const onChange = ({ window }) => {
       setScreenData({
-        width: Math.max(window.width, window.height),
-        height: Math.min(window.width, window.height)
+        width: window.width,
+        height: window.height
       });
     };
 
@@ -26,7 +26,7 @@ export const ScreenProvider = ({ children }) => {
     return () => subscription?.remove();
   }, []);
 
-  const isPhone = screenData.width < 768;
+  const isPhone = screenData.width < 800;
   const isSmallPhone = screenData.width < 375;
   const isLargeTablet = Math.min(screenData.width, screenData.height) >= 600;
 

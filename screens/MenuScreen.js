@@ -115,8 +115,8 @@ const MenuScreen = ({ navigation }) => {
     menuItem: {
       backgroundColor: '#ffffff',
       width: isPhone ?
-        (screenData.width - 40) / 2 - 8 :
-        isLargeTablet ? 200 : screenData.width * 0.15,
+        (screenDataRef.current.width - 40) / 2 - 8 :
+        isLargeTablet ? 200 : screenDataRef.current.width * 0.15,
       height: 100,
       padding: isSmallPhone ? 8 : 5,
       borderRadius: 12,
