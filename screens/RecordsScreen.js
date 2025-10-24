@@ -41,6 +41,9 @@ const RecordsScreen = ({ navigation }) => {
     // Print states
     const [isPrinting, setIsPrinting] = useState(false);
 
+    // Top Sales filter state
+    const [showAddOnsInTopSales, setShowAddOnsInTopSales] = useState(false);
+
     const ITEMS_PER_PAGE = 20; // Pagination for better performance
 
     useEffect(() => {
@@ -51,12 +54,12 @@ const RecordsScreen = ({ navigation }) => {
         return unsubscribe;
     }, [navigation]);
 
-    // Reload data when date filter changes
+    // Reload data when date filter changes or add-ons visibility changes
     useEffect(() => {
         if (!loading) {
             loadInitialData();
         }
-    }, [dateFilter, selectedDay, customStartDate, customEndDate]);
+    }, [dateFilter, selectedDay, customStartDate, customEndDate, showAddOnsInTopSales]);
 
     // Date filter helper functions
     const getDateRange = useCallback(() => {
@@ -200,7 +203,17 @@ const RecordsScreen = ({ navigation }) => {
             );
             const limitedTransactions = completedTransactions.slice(0, LIMIT_SALES_FOR_PERFORMANCE); // Limit dataset
 
-            const salesRanking = calculateTopSales(limitedTransactions);
+            // Load categories to create item-to-category mapping
+            const categoriesWithItems = await databaseService.getCategoriesWithItems();
+            const itemToCategoryMap = {};
+
+            categoriesWithItems.forEach(category => {
+                category.items.forEach(item => {
+                    itemToCategoryMap[item.item_name] = category.category_name;
+                });
+            });
+
+            const salesRanking = calculateTopSales(limitedTransactions, itemToCategoryMap, showAddOnsInTopSales);
             setTopSales(salesRanking);
         } catch (error) {
             console.error('Error loading top sales:', error);
@@ -250,29 +263,36 @@ const RecordsScreen = ({ navigation }) => {
 
     // Memoize expensive calculations
     const calculateTopSales = useMemo(() => {
-        return (transactions) => {
+        return (transactions, itemToCategoryMap, includeAddOns = false) => {
             const itemSales = {};
-            
+
             // Optimize the calculation
             transactions.forEach(transaction => {
                 if (transaction.items?.length > 0) {
                     transaction.items.forEach(item => {
                         const itemName = item.item_name;
-                        const quantity = parseInt(item.quantity) || 0;
-                        const revenue = parseFloat(item.line_total) || 0;
-                        
-                        if (itemSales[itemName]) {
-                            itemSales[itemName].totalQuantity += quantity;
-                            itemSales[itemName].totalRevenue += revenue;
-                            itemSales[itemName].transactions += 1;
-                        } else {
-                            itemSales[itemName] = {
-                                name: itemName,
-                                totalQuantity: quantity,
-                                totalRevenue: revenue,
-                                transactions: 1,
-                                averagePrice: parseFloat(item.unit_price) || 0
-                            };
+                        const categoryName = itemToCategoryMap[itemName];
+
+                        // Exclude if category starts with "Add" (case-insensitive), unless includeAddOns is true
+                        const shouldInclude = includeAddOns || !categoryName || !categoryName.toLowerCase().startsWith('add');
+
+                        if (shouldInclude) {
+                            const quantity = parseInt(item.quantity) || 0;
+                            const revenue = parseFloat(item.line_total) || 0;
+
+                            if (itemSales[itemName]) {
+                                itemSales[itemName].totalQuantity += quantity;
+                                itemSales[itemName].totalRevenue += revenue;
+                                itemSales[itemName].transactions += 1;
+                            } else {
+                                itemSales[itemName] = {
+                                    name: itemName,
+                                    totalQuantity: quantity,
+                                    totalRevenue: revenue,
+                                    transactions: 1,
+                                    averagePrice: parseFloat(item.unit_price) || 0
+                                };
+                            }
                         }
                     });
                 }
@@ -369,12 +389,26 @@ const RecordsScreen = ({ navigation }) => {
         );
     }, [totalSummary.total_transactions, formatCurrency]);
 
+    const getPaymentMethodColor = (method) => {
+        const methodLower = (method || 'cash').toLowerCase();
+        if (methodLower.includes('gcash')) return '#007DFF'; // GCash blue
+        if (methodLower.includes('cash')) return '#4ade80'; // Light green
+        if (methodLower.includes('bpi')) return '#E31937'; // BPI red
+        return '#6b7280'; // Default gray
+    };
+
+    const formatItemsSummary = (items) => {
+        if (!items || items.length === 0) return 'No items';
+        return items.map(item => item.item_name).join(', ');
+    };
+
     const renderTransactionItem = useCallback(({ item, index }) => {
         const isExpanded = expandedItems[item.id];
-        
+        const paymentColor = getPaymentMethodColor(item.payment_method);
+
         return (
             <View style={styles.transactionCard}>
-                <TouchableOpacity 
+                <TouchableOpacity
                     style={styles.recordsContainer}
                     onPress={() => toggleAccordion(item.id)}
                     activeOpacity={0.7}
@@ -383,34 +417,52 @@ const RecordsScreen = ({ navigation }) => {
                         <View style={styles.leftSection}>
                             <View style={styles.dateContainer}>
                                 <Text style={styles.dateText}>
-                                    {item.transaction_datetime.toLocaleDateString('en-US', { 
-                                        month: 'short', 
-                                        day: 'numeric' 
-                                    })}
+                                    {item.transaction_datetime.toLocaleDateString('en-US', {
+                                        month: 'short',
+                                        day: 'numeric'
+                                    })} ID: {item.id}
                                 </Text>
-                                <Text style={styles.timeText}>
-                                    {item.transaction_datetime.toLocaleTimeString('en-US', { 
-                                        hour: '2-digit', 
-                                        minute: '2-digit' 
-                                    })}
-                                </Text>
-                            </View>
-                            <View style={styles.transactionInfo}>
-                                <Text style={styles.transactionId}>ID: {item.id}</Text>
-                                <Text style={styles.paymentMethod}>
-                                    {item.payment_method || 'Cash'}
-                                </Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                                    <Text style={styles.timeText}>
+                                        {item.transaction_datetime.toLocaleTimeString('en-US', {
+                                            hour: 'numeric',
+                                            minute: '2-digit',
+                                            hour12: true
+                                        })}{' '}
+                                    </Text>
+                                    <Text style={{
+                                        backgroundColor: paymentColor,
+                                        color: '#ffffff',
+                                        paddingHorizontal: 8,
+                                        paddingVertical: 2,
+                                        borderRadius: 6,
+                                        fontSize: 12,
+                                        fontWeight: '500'
+                                    }}>
+                                        {item.payment_method || 'Cash'}
+                                    </Text>
+                                </View>
                             </View>
                         </View>
-                        
+
+                        <View style={styles.middleSection}>
+                            <Text
+                                style={styles.itemsSummaryText}
+                                numberOfLines={2}
+                                ellipsizeMode="tail"
+                            >
+                                {formatItemsSummary(item.items)}
+                            </Text>
+                        </View>
+
                         <View style={styles.rightSection}>
                             <Text style={styles.totalAmount}>
                                 ₱{formatCurrency(item.total_amount)}
                             </Text>
-                            <Ionicons 
-                                name={isExpanded ? "chevron-up" : "chevron-down"} 
-                                size={20} 
-                                color="#666" 
+                            <Ionicons
+                                name={isExpanded ? "chevron-up" : "chevron-down"}
+                                size={20}
+                                color="#666"
                             />
                         </View>
                     </View>
@@ -713,10 +765,26 @@ const RecordsScreen = ({ navigation }) => {
                             {/* Top Sales - Using FlatList for better performance */}
                             <View style={styles.topSalesContainer}>
                                 <View style={styles.topSalesHeader}>
-                                    <Ionicons name="trophy" size={24} color="#f59e0b" />
-                                    <Text style={styles.topSalesTitle}>Top Sales</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <Ionicons name="trophy" size={24} color="#f59e0b" />
+                                        <Text style={styles.topSalesTitle}>Top Sales</Text>
+                                    </View>
+                                    <TouchableOpacity
+                                        onPress={() => setShowAddOnsInTopSales(!showAddOnsInTopSales)}
+                                        style={{ flexDirection: 'row', alignItems: 'center', padding: 5 }}
+                                    >
+                                        <Ionicons
+                                            name={showAddOnsInTopSales ? "eye-off" : "eye"}
+                                            size={16}
+                                            color="#6b7280"
+                                            style={{ marginRight: 4 }}
+                                        />
+                                        <Text style={styles.toggleAddOnsText}>
+                                            {showAddOnsInTopSales ? "Hide" : "Show"} Add-ons
+                                        </Text>
+                                    </TouchableOpacity>
                                 </View>
-                                
+
                                 <FlatList
                                     data={topSales}
                                     renderItem={renderTopSalesItem}
@@ -1100,7 +1168,7 @@ const styles = StyleSheet.create({
     topSalesHeader: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
+        justifyContent: 'space-between',
         marginBottom: 20,
     },
     topSalesTitle: {
@@ -1108,6 +1176,11 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: '#1f2937',
         marginLeft: 8,
+    },
+    toggleAddOnsText: {
+        fontSize: 12,
+        color: '#6b7280',
+        fontWeight: '500',
     },
     rankingRow: {
         flexDirection: 'row',
@@ -1211,6 +1284,7 @@ const styles = StyleSheet.create({
     },
     recordsContainer: {
         padding: 16,
+        borderRadius: 8,
     },
     transactionMainContent: {
         flexDirection: 'row',
@@ -1220,12 +1294,14 @@ const styles = StyleSheet.create({
     leftSection: {
         flexDirection: 'row',
         alignItems: 'center',
+    },
+    middleSection: {
         flex: 1,
+        marginHorizontal: 12,
+        justifyContent: 'center',
     },
     dateContainer: {
-        marginRight: 16,
-        alignItems: 'center',
-        minWidth: 60,
+        alignItems: 'flex-start',
     },
     dateText: {
         fontSize: 16,
@@ -1236,6 +1312,12 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#6b7280',
         marginTop: 2,
+    },
+    itemsSummaryText: {
+        fontSize: 11,
+        color: '#6b7280',
+        marginTop: 4,
+        lineHeight: 16,
     },
     transactionInfo: {
         flex: 1,
