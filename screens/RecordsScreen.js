@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import databaseService from '../src/services/database';
 import exportService from '../src/services/exportService';
+import printerService from '../src/services/printerService';
 
 const RecordsScreen = ({ navigation }) => {
 
@@ -15,7 +16,8 @@ const RecordsScreen = ({ navigation }) => {
     const [totalSummary, setTotalSummary] = useState({
         total_transactions: 0,
         total_sales: 0,
-        average_sale: 0
+        average_sale: 0,
+        cups_sold: 0
     });
     const [topSales, setTopSales] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -23,9 +25,11 @@ const RecordsScreen = ({ navigation }) => {
     const [hasMoreData, setHasMoreData] = useState(true);
 
     // Date filter states
-    const [dateFilter, setDateFilter] = useState('all'); // 'all', 'today', 'week', 'month', 'custom'
+    const [dateFilter, setDateFilter] = useState('today'); // 'all', 'today', 'day', 'week', 'month', 'custom'
     const [showStartDatePicker, setShowStartDatePicker] = useState(false);
     const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+    const [showDayPicker, setShowDayPicker] = useState(false);
+    const [selectedDay, setSelectedDay] = useState(new Date());
     const [customStartDate, setCustomStartDate] = useState(new Date());
     const [customEndDate, setCustomEndDate] = useState(new Date());
     const [showDateFilterModal, setShowDateFilterModal] = useState(false);
@@ -33,6 +37,12 @@ const RecordsScreen = ({ navigation }) => {
     // Export states
     const [isExporting, setIsExporting] = useState(false);
     const [showExportModal, setShowExportModal] = useState(false);
+
+    // Print states
+    const [isPrinting, setIsPrinting] = useState(false);
+
+    // Top Sales filter state
+    const [showAddOnsInTopSales, setShowAddOnsInTopSales] = useState(false);
 
     const ITEMS_PER_PAGE = 20; // Pagination for better performance
 
@@ -44,12 +54,12 @@ const RecordsScreen = ({ navigation }) => {
         return unsubscribe;
     }, [navigation]);
 
-    // Reload data when date filter changes
+    // Reload data when date filter changes or add-ons visibility changes
     useEffect(() => {
         if (!loading) {
             loadInitialData();
         }
-    }, [dateFilter, customStartDate, customEndDate]);
+    }, [dateFilter, selectedDay, customStartDate, customEndDate, showAddOnsInTopSales]);
 
     // Date filter helper functions
     const getDateRange = useCallback(() => {
@@ -60,6 +70,12 @@ const RecordsScreen = ({ navigation }) => {
             case 'today':
                 startDate = new Date(now.setHours(0, 0, 0, 0));
                 endDate = new Date(now.setHours(23, 59, 59, 999));
+                break;
+            case 'day':
+                startDate = new Date(selectedDay);
+                startDate.setHours(0, 0, 0, 0);
+                endDate = new Date(selectedDay);
+                endDate.setHours(23, 59, 59, 999);
                 break;
             case 'week':
                 const startOfWeek = new Date(now);
@@ -86,7 +102,7 @@ const RecordsScreen = ({ navigation }) => {
         }
 
         return { startDate, endDate };
-    }, [dateFilter, customStartDate, customEndDate]);
+    }, [dateFilter, selectedDay, customStartDate, customEndDate]);
 
     const filterTransactionsByDate = useCallback((transactions) => {
         if (dateFilter === 'all') return transactions;
@@ -140,10 +156,36 @@ const RecordsScreen = ({ navigation }) => {
             const averageSale = limitedTransactions.length > 0 ?
                 totalSales / limitedTransactions.length : 0;
 
+            // Calculate cups sold (excluding add-ons)
+            // Load categories to create item-to-category mapping
+            const categoriesWithItems = await databaseService.getCategoriesWithItems();
+            const itemToCategoryMap = {};
+
+            categoriesWithItems.forEach(category => {
+                category.items.forEach(item => {
+                    itemToCategoryMap[item.item_name] = category.category_name;
+                });
+            });
+
+            // Count quantities excluding items from categories starting with "Add"
+            let cupsSold = 0;
+            limitedTransactions.forEach(transaction => {
+                if (transaction.items && transaction.items.length > 0) {
+                    transaction.items.forEach(item => {
+                        const categoryName = itemToCategoryMap[item.item_name];
+                        // Exclude if category starts with "Add" (case-insensitive)
+                        if (!categoryName || !categoryName.toLowerCase().startsWith('add')) {
+                            cupsSold += parseInt(item.quantity) || 0;
+                        }
+                    });
+                }
+            });
+
             setTotalSummary({
                 total_transactions: limitedTransactions.length,
                 total_sales: totalSales,
-                average_sale: averageSale
+                average_sale: averageSale,
+                cups_sold: cupsSold
             });
         } catch (error) {
             console.error('Error loading summary:', error);
@@ -161,7 +203,17 @@ const RecordsScreen = ({ navigation }) => {
             );
             const limitedTransactions = completedTransactions.slice(0, LIMIT_SALES_FOR_PERFORMANCE); // Limit dataset
 
-            const salesRanking = calculateTopSales(limitedTransactions);
+            // Load categories to create item-to-category mapping
+            const categoriesWithItems = await databaseService.getCategoriesWithItems();
+            const itemToCategoryMap = {};
+
+            categoriesWithItems.forEach(category => {
+                category.items.forEach(item => {
+                    itemToCategoryMap[item.item_name] = category.category_name;
+                });
+            });
+
+            const salesRanking = calculateTopSales(limitedTransactions, itemToCategoryMap, showAddOnsInTopSales);
             setTopSales(salesRanking);
         } catch (error) {
             console.error('Error loading top sales:', error);
@@ -211,29 +263,36 @@ const RecordsScreen = ({ navigation }) => {
 
     // Memoize expensive calculations
     const calculateTopSales = useMemo(() => {
-        return (transactions) => {
+        return (transactions, itemToCategoryMap, includeAddOns = false) => {
             const itemSales = {};
-            
+
             // Optimize the calculation
             transactions.forEach(transaction => {
                 if (transaction.items?.length > 0) {
                     transaction.items.forEach(item => {
                         const itemName = item.item_name;
-                        const quantity = parseInt(item.quantity) || 0;
-                        const revenue = parseFloat(item.line_total) || 0;
-                        
-                        if (itemSales[itemName]) {
-                            itemSales[itemName].totalQuantity += quantity;
-                            itemSales[itemName].totalRevenue += revenue;
-                            itemSales[itemName].transactions += 1;
-                        } else {
-                            itemSales[itemName] = {
-                                name: itemName,
-                                totalQuantity: quantity,
-                                totalRevenue: revenue,
-                                transactions: 1,
-                                averagePrice: parseFloat(item.unit_price) || 0
-                            };
+                        const categoryName = itemToCategoryMap[itemName];
+
+                        // Exclude if category starts with "Add" (case-insensitive), unless includeAddOns is true
+                        const shouldInclude = includeAddOns || !categoryName || !categoryName.toLowerCase().startsWith('add');
+
+                        if (shouldInclude) {
+                            const quantity = parseInt(item.quantity) || 0;
+                            const revenue = parseFloat(item.line_total) || 0;
+
+                            if (itemSales[itemName]) {
+                                itemSales[itemName].totalQuantity += quantity;
+                                itemSales[itemName].totalRevenue += revenue;
+                                itemSales[itemName].transactions += 1;
+                            } else {
+                                itemSales[itemName] = {
+                                    name: itemName,
+                                    totalQuantity: quantity,
+                                    totalRevenue: revenue,
+                                    transactions: 1,
+                                    averagePrice: parseFloat(item.unit_price) || 0
+                                };
+                            }
                         }
                     });
                 }
@@ -330,12 +389,26 @@ const RecordsScreen = ({ navigation }) => {
         );
     }, [totalSummary.total_transactions, formatCurrency]);
 
+    const getPaymentMethodColor = (method) => {
+        const methodLower = (method || 'cash').toLowerCase();
+        if (methodLower.includes('gcash')) return '#007DFF'; // GCash blue
+        if (methodLower.includes('cash')) return '#4ade80'; // Light green
+        if (methodLower.includes('bpi')) return '#E31937'; // BPI red
+        return '#6b7280'; // Default gray
+    };
+
+    const formatItemsSummary = (items) => {
+        if (!items || items.length === 0) return 'No items';
+        return items.map(item => item.item_name).join(', ');
+    };
+
     const renderTransactionItem = useCallback(({ item, index }) => {
         const isExpanded = expandedItems[item.id];
-        
+        const paymentColor = getPaymentMethodColor(item.payment_method);
+
         return (
             <View style={styles.transactionCard}>
-                <TouchableOpacity 
+                <TouchableOpacity
                     style={styles.recordsContainer}
                     onPress={() => toggleAccordion(item.id)}
                     activeOpacity={0.7}
@@ -344,34 +417,52 @@ const RecordsScreen = ({ navigation }) => {
                         <View style={styles.leftSection}>
                             <View style={styles.dateContainer}>
                                 <Text style={styles.dateText}>
-                                    {item.transaction_datetime.toLocaleDateString('en-US', { 
-                                        month: 'short', 
-                                        day: 'numeric' 
-                                    })}
+                                    {item.transaction_datetime.toLocaleDateString('en-US', {
+                                        month: 'short',
+                                        day: 'numeric'
+                                    })} ID: {item.id}
                                 </Text>
-                                <Text style={styles.timeText}>
-                                    {item.transaction_datetime.toLocaleTimeString('en-US', { 
-                                        hour: '2-digit', 
-                                        minute: '2-digit' 
-                                    })}
-                                </Text>
-                            </View>
-                            <View style={styles.transactionInfo}>
-                                <Text style={styles.transactionId}>ID: {item.id}</Text>
-                                <Text style={styles.paymentMethod}>
-                                    {item.payment_method || 'Cash'}
-                                </Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                                    <Text style={styles.timeText}>
+                                        {item.transaction_datetime.toLocaleTimeString('en-US', {
+                                            hour: 'numeric',
+                                            minute: '2-digit',
+                                            hour12: true
+                                        })}{' '}
+                                    </Text>
+                                    <Text style={{
+                                        backgroundColor: paymentColor,
+                                        color: '#ffffff',
+                                        paddingHorizontal: 8,
+                                        paddingVertical: 2,
+                                        borderRadius: 6,
+                                        fontSize: 12,
+                                        fontWeight: '500'
+                                    }}>
+                                        {item.payment_method || 'Cash'}
+                                    </Text>
+                                </View>
                             </View>
                         </View>
-                        
+
+                        <View style={styles.middleSection}>
+                            <Text
+                                style={styles.itemsSummaryText}
+                                numberOfLines={2}
+                                ellipsizeMode="tail"
+                            >
+                                {formatItemsSummary(item.items)}
+                            </Text>
+                        </View>
+
                         <View style={styles.rightSection}>
                             <Text style={styles.totalAmount}>
                                 ₱{formatCurrency(item.total_amount)}
                             </Text>
-                            <Ionicons 
-                                name={isExpanded ? "chevron-up" : "chevron-down"} 
-                                size={20} 
-                                color="#666" 
+                            <Ionicons
+                                name={isExpanded ? "chevron-up" : "chevron-down"}
+                                size={20}
+                                color="#666"
                             />
                         </View>
                     </View>
@@ -407,6 +498,8 @@ const RecordsScreen = ({ navigation }) => {
         switch (dateFilter) {
             case 'today':
                 return 'Today';
+            case 'day':
+                return selectedDay.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
             case 'week':
                 return 'This Week';
             case 'month':
@@ -416,12 +509,12 @@ const RecordsScreen = ({ navigation }) => {
             default:
                 return 'All Time';
         }
-    }, [dateFilter, customStartDate, customEndDate]);
+    }, [dateFilter, selectedDay, customStartDate, customEndDate]);
 
     const handleDateFilterChange = useCallback((filter) => {
         setDateFilter(filter);
         setPage(1);
-        if (filter !== 'custom') {
+        if (filter !== 'custom' && filter !== 'day') {
             setShowDateFilterModal(false);
         }
     }, []);
@@ -430,6 +523,19 @@ const RecordsScreen = ({ navigation }) => {
         setDateFilter('custom');
         setPage(1);
         setShowDateFilterModal(false);
+    }, []);
+
+    const handleDayConfirm = useCallback(() => {
+        setDateFilter('day');
+        setPage(1);
+        setShowDateFilterModal(false);
+    }, []);
+
+    const onDayChange = useCallback((event, selectedDate) => {
+        setShowDayPicker(false);
+        if (selectedDate) {
+            setSelectedDay(selectedDate);
+        }
     }, []);
 
     const onStartDateChange = useCallback((event, selectedDate) => {
@@ -456,7 +562,7 @@ const RecordsScreen = ({ navigation }) => {
             const allTransactions = await databaseService.getTransactions();
             const filteredTransactions = filterTransactionsByDate(allTransactions);
 
-            const dateRangeText = exportService.getDateRangeText(dateFilter, customStartDate, customEndDate);
+            const dateRangeText = exportService.getDateRangeText(dateFilter, customStartDate, customEndDate, selectedDay);
             const result = await exportService.exportToCSV(filteredTransactions, totalSummary, topSales, dateRangeText);
 
             if (result.success) {
@@ -481,7 +587,7 @@ const RecordsScreen = ({ navigation }) => {
             const allTransactions = await databaseService.getTransactions();
             const filteredTransactions = filterTransactionsByDate(allTransactions);
 
-            const dateRangeText = exportService.getDateRangeText(dateFilter, customStartDate, customEndDate);
+            const dateRangeText = exportService.getDateRangeText(dateFilter, customStartDate, customEndDate, selectedDay);
             const result = await exportService.exportToExcel(filteredTransactions, totalSummary, topSales, dateRangeText);
 
             if (result.success) {
@@ -496,6 +602,30 @@ const RecordsScreen = ({ navigation }) => {
             setIsExporting(false);
         }
     }, [dateFilter, customStartDate, customEndDate, totalSummary, topSales, filterTransactionsByDate]);
+
+    // Print summary function
+    const handlePrintSummary = useCallback(async () => {
+        setIsPrinting(true);
+
+        try {
+            // Initialize printer if needed
+            await printerService.loadStoredPrinter();
+
+            const dateRangeText = exportService.getDateRangeText(dateFilter, customStartDate, customEndDate, selectedDay);
+            const result = await printerService.printSummary(totalSummary, topSales, dateRangeText);
+
+            if (result.success) {
+                Alert.alert('Print Successful', 'Sales summary has been printed.');
+            } else {
+                Alert.alert('Print Failed', result.error || 'Could not print summary. Please check your printer connection.');
+            }
+        } catch (error) {
+            console.error('Print error:', error);
+            Alert.alert('Print Failed', 'An error occurred while printing the summary.');
+        } finally {
+            setIsPrinting(false);
+        }
+    }, [dateFilter, customStartDate, customEndDate, totalSummary, topSales]);
 
     if (loading && items.length === 0) {
         return (
@@ -554,6 +684,28 @@ const RecordsScreen = ({ navigation }) => {
 
                         <TouchableOpacity
                             style={[
+                                styles.printButton,
+                                (isPrinting || totalSummary.total_transactions === 0) && styles.printButtonDisabled
+                            ]}
+                            onPress={handlePrintSummary}
+                            activeOpacity={0.8}
+                            disabled={isPrinting || totalSummary.total_transactions === 0}
+                        >
+                            {isPrinting ? (
+                                <>
+                                    <Ionicons name="hourglass-outline" size={18} color="#9ca3af" />
+                                    <Text style={styles.printButtonTextDisabled}>Printing...</Text>
+                                </>
+                            ) : (
+                                <>
+                                    <Ionicons name="print-outline" size={18} color="#ffffff" />
+                                    <Text style={styles.printButtonText}>Print</Text>
+                                </>
+                            )}
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[
                                 styles.exportButton,
                                 (isExporting || totalSummary.total_transactions === 0) && styles.exportButtonDisabled
                             ]}
@@ -604,15 +756,35 @@ const RecordsScreen = ({ navigation }) => {
                                         ₱{formatCurrency(totalSummary.average_sale)}
                                     </Text>
                                 </View>
+                                <View style={styles.summaryRow}>
+                                    <Text style={styles.summaryLabel}># of Cups Sold:</Text>
+                                    <Text style={styles.summaryValue}>{totalSummary.cups_sold}</Text>
+                                </View>
                             </View>
 
                             {/* Top Sales - Using FlatList for better performance */}
                             <View style={styles.topSalesContainer}>
                                 <View style={styles.topSalesHeader}>
-                                    <Ionicons name="trophy" size={24} color="#f59e0b" />
-                                    <Text style={styles.topSalesTitle}>Top Sales</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <Ionicons name="trophy" size={24} color="#f59e0b" />
+                                        <Text style={styles.topSalesTitle}>Top Sales</Text>
+                                    </View>
+                                    <TouchableOpacity
+                                        onPress={() => setShowAddOnsInTopSales(!showAddOnsInTopSales)}
+                                        style={{ flexDirection: 'row', alignItems: 'center', padding: 5 }}
+                                    >
+                                        <Ionicons
+                                            name={showAddOnsInTopSales ? "eye-off" : "eye"}
+                                            size={16}
+                                            color="#6b7280"
+                                            style={{ marginRight: 4 }}
+                                        />
+                                        <Text style={styles.toggleAddOnsText}>
+                                            {showAddOnsInTopSales ? "Hide" : "Show"} Add-ons
+                                        </Text>
+                                    </TouchableOpacity>
                                 </View>
-                                
+
                                 <FlatList
                                     data={topSales}
                                     renderItem={renderTopSalesItem}
@@ -668,6 +840,7 @@ const RecordsScreen = ({ navigation }) => {
                             {[
                                 { key: 'all', label: 'All Time', icon: 'infinite-outline' },
                                 { key: 'today', label: 'Today', icon: 'today-outline' },
+                                { key: 'day', label: 'Select Day', icon: 'calendar-outline' },
                                 { key: 'week', label: 'This Week', icon: 'calendar-outline' },
                                 { key: 'month', label: 'This Month', icon: 'calendar-outline' },
                                 { key: 'custom', label: 'Custom Range', icon: 'options-outline' }
@@ -698,6 +871,29 @@ const RecordsScreen = ({ navigation }) => {
                                 </TouchableOpacity>
                             ))}
                         </View>
+
+                        {dateFilter === 'day' && (
+                            <View style={styles.customDateContainer}>
+                                <Text style={styles.customDateLabel}>Select Day</Text>
+
+                                <TouchableOpacity
+                                    style={styles.dateButton}
+                                    onPress={() => setShowDayPicker(true)}
+                                >
+                                    <Ionicons name="calendar" size={16} color="#6b7280" />
+                                    <Text style={styles.dateButtonText}>
+                                        {selectedDay.toLocaleDateString()}
+                                    </Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={styles.confirmCustomDateButton}
+                                    onPress={handleDayConfirm}
+                                >
+                                    <Text style={styles.confirmCustomDateText}>Apply Day</Text>
+                                </TouchableOpacity>
+                            </View>
+                        )}
 
                         {dateFilter === 'custom' && (
                             <View style={styles.customDateContainer}>
@@ -738,6 +934,15 @@ const RecordsScreen = ({ navigation }) => {
             </Modal>
 
             {/* Date Pickers */}
+            {showDayPicker && (
+                <DateTimePicker
+                    value={selectedDay}
+                    mode="date"
+                    display="default"
+                    onChange={onDayChange}
+                />
+            )}
+
             {showStartDatePicker && (
                 <DateTimePicker
                     value={customStartDate}
@@ -963,7 +1168,7 @@ const styles = StyleSheet.create({
     topSalesHeader: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
+        justifyContent: 'space-between',
         marginBottom: 20,
     },
     topSalesTitle: {
@@ -971,6 +1176,11 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: '#1f2937',
         marginLeft: 8,
+    },
+    toggleAddOnsText: {
+        fontSize: 12,
+        color: '#6b7280',
+        fontWeight: '500',
     },
     rankingRow: {
         flexDirection: 'row',
@@ -1074,6 +1284,7 @@ const styles = StyleSheet.create({
     },
     recordsContainer: {
         padding: 16,
+        borderRadius: 8,
     },
     transactionMainContent: {
         flexDirection: 'row',
@@ -1083,12 +1294,14 @@ const styles = StyleSheet.create({
     leftSection: {
         flexDirection: 'row',
         alignItems: 'center',
+    },
+    middleSection: {
         flex: 1,
+        marginHorizontal: 12,
+        justifyContent: 'center',
     },
     dateContainer: {
-        marginRight: 16,
-        alignItems: 'center',
-        minWidth: 60,
+        alignItems: 'flex-start',
     },
     dateText: {
         fontSize: 16,
@@ -1099,6 +1312,12 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#6b7280',
         marginTop: 2,
+    },
+    itemsSummaryText: {
+        fontSize: 11,
+        color: '#6b7280',
+        marginTop: 4,
+        lineHeight: 16,
     },
     transactionInfo: {
         flex: 1,
@@ -1223,7 +1442,7 @@ const styles = StyleSheet.create({
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
         paddingHorizontal: 20,
-        paddingBottom: 40,
+        paddingBottom: 60,
         maxHeight: '80%',
     },
     modalHeader: {
@@ -1278,6 +1497,7 @@ const styles = StyleSheet.create({
         borderTopWidth: 1,
         borderTopColor: '#e5e7eb',
         paddingTop: 20,
+        paddingBottom: 20,
     },
     customDateLabel: {
         fontSize: 16,
@@ -1311,6 +1531,7 @@ const styles = StyleSheet.create({
         paddingVertical: 14,
         borderRadius: 8,
         alignItems: 'center',
+        marginTop: 20,
     },
     confirmCustomDateText: {
         color: '#ffffff',
@@ -1337,6 +1558,37 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '600',
         color: '#ffffff',
+    },
+
+    // Print Button Styles
+    printButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f59e0b',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 10,
+        gap: 6,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    printButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#ffffff',
+    },
+    printButtonTextDisabled: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#9ca3af',
+    },
+    printButtonDisabled: {
+        backgroundColor: '#f3f4f6',
+        borderWidth: 1,
+        borderColor: '#e5e7eb',
     },
 
     // Export Button Styles

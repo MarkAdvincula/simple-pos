@@ -354,10 +354,15 @@ class ExportService {
   }
 
   // Get formatted date range text for filename
-  getDateRangeText(dateFilter, customStartDate, customEndDate) {
+  getDateRangeText(dateFilter, customStartDate, customEndDate, selectedDay) {
     switch (dateFilter) {
       case 'today':
         return 'today';
+      case 'day':
+        if (selectedDay) {
+          return selectedDay.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+        return 'selected_day';
       case 'week':
         return 'this_week';
       case 'month':
