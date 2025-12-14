@@ -8,15 +8,21 @@ import {
   StyleSheet,
   SafeAreaView,
   Dimensions,
+  Alert,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useScreen } from '../src/contexts/ScreenContext';
 import databaseService from '../src/services/database';
 
-const MenuScreen = ({ navigation }) => {
+const MenuScreen = ({ navigation, route }) => {
   const [cart, setCart] = useState([]);
   const [menu, setMenu] = useState({});
   const [loading, setLoading] = useState(true);
+  const [queueCount, setQueueCount] = useState(0);
+  const [showQueueModal, setShowQueueModal] = useState(false);
+  const [queueName, setQueueName] = useState('');
   const screenDataRef = useRef(Dimensions.get('window'));
   const {isPhone, isSmallPhone,isLargeTablet} = useScreen();
 
@@ -30,7 +36,15 @@ const MenuScreen = ({ navigation }) => {
   useFocusEffect(
     useCallback(() => {
       loadMenuFromDatabase();
-    }, [])
+      loadQueueCount();
+
+      // Handle loaded cart from Queue screen
+      if (route.params?.loadedCart) {
+        setCart(route.params.loadedCart);
+        // Clear the param to prevent reloading on next focus
+        navigation.setParams({ loadedCart: undefined });
+      }
+    }, [route.params?.loadedCart])
   );
 
   const loadMenuFromDatabase = async () => {
@@ -55,6 +69,46 @@ const MenuScreen = ({ navigation }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadQueueCount = async () => {
+    try {
+      const count = await databaseService.getQueueCount();
+      setQueueCount(count);
+    } catch (error) {
+      console.error('Error loading queue count:', error);
+    }
+  };
+
+  const handleQueueOrder = () => {
+    if (cart.length === 0) {
+      Alert.alert('Empty Cart', 'Please add items to cart before queueing');
+      return;
+    }
+    setShowQueueModal(true);
+  };
+
+  const saveQueue = async () => {
+    if (!queueName.trim()) {
+      Alert.alert('Name Required', 'Please enter a name for this queue');
+      return;
+    }
+
+    try {
+      await databaseService.addQueuedOrder(queueName.trim(), cart, getTotalPrice);
+      setShowQueueModal(false);
+      setQueueName('');
+      clearCart();
+      loadQueueCount();
+      Alert.alert('Success', 'Order queued successfully');
+    } catch (error) {
+      console.error('Error saving queue:', error);
+      Alert.alert('Error', 'Failed to queue order');
+    }
+  };
+
+  const showQueues = () => {
+    navigation.navigate('Queue');
   };
 
 
@@ -133,7 +187,7 @@ const MenuScreen = ({ navigation }) => {
     },
     cartSection: {
       minWidth: isPhone ? '100%' : 350,
-      height: isPhone ? (cart.length > 0 ? '40%' : '20%') : '100%',
+      height: isPhone ? (cart.length > 0 ? '40%' : '20%') : '95%',
       backgroundColor: '#ffffff',
       padding: 16,
       borderLeftWidth: isPhone ? 0 : 2,
@@ -165,20 +219,20 @@ const MenuScreen = ({ navigation }) => {
     },
     checkoutButton: {
       backgroundColor: '#2563eb',
-      padding: isPhone ? 8 : 16,
+      padding: isPhone ? 8 : 12,
       borderRadius: 8,
-      height: isPhone ? 40 : 'auto',
+      height: isPhone ? 40 : 48,
       justifyContent: 'center',
       alignItems: 'center',
     },
     checkoutButtonText: {
       color: '#ffffff',
-      fontSize: isPhone ? 12 : 18,
+      fontSize: isPhone ? 12 : 16,
       fontWeight: 'bold',
     },
     clearButton: {
       backgroundColor: '#dc2626',
-      padding: isPhone ? 4 : 12,
+      padding: isPhone ? 4 : 10,
       borderRadius: 8,
       alignItems: 'center',
       justifyContent: 'center',
@@ -186,9 +240,9 @@ const MenuScreen = ({ navigation }) => {
     cartFooter: {
       borderTopWidth: 2,
       borderTopColor: '#e5e7eb',
-      paddingTop: 16,
+      paddingTop: 12,
       backgroundColor: '#ffffff',
-      gap: isPhone ? 10 : 20,
+      gap: isPhone ? 10 : 12,
       flexDirection: isPhone ? 'row' : 'column',
       justifyContent: 'space-between',
       alignItems: isPhone ? 'center' : 'stretch',
@@ -243,6 +297,26 @@ const MenuScreen = ({ navigation }) => {
                 activeOpacity={0.7}
               >
                 <Ionicons name="analytics" size={18} color="#6b7280" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.headerButton,
+                  queueCount === 0 && styles.headerButtonDisabled
+                ]}
+                onPress={showQueues}
+                activeOpacity={0.7}
+                disabled={queueCount === 0}
+              >
+                <Ionicons
+                  name="list"
+                  size={18}
+                  color={queueCount === 0 ? '#d1d5db' : '#6b7280'}
+                />
+                {queueCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{queueCount}</Text>
+                  </View>
+                )}
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.headerButton}
@@ -369,18 +443,67 @@ const MenuScreen = ({ navigation }) => {
                   <Text style={styles.totalLabel}>Total:</Text>
                   <Text style={styles.totalAmount}>₱{getTotalPrice}</Text>
                 </View>
-                <TouchableOpacity
-                  style={dynamicStyles.checkoutButton}
-                  onPress={handleProceedToPayment}
-                  activeOpacity={0.8}
-                >
-                  <Text style={dynamicStyles.checkoutButtonText}>Proceed to Payment</Text>
-                </TouchableOpacity>
+                <View style={styles.actionButtonsContainer}>
+                  <TouchableOpacity
+                    style={[dynamicStyles.checkoutButton, { flex: 1 }]}
+                    onPress={handleProceedToPayment}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={dynamicStyles.checkoutButtonText}>Proceed to Payment</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.queueButton}
+                    onPress={handleQueueOrder}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="time-outline" size={20} color="#2563eb" />
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
           </View>
         </View>
       </View>
+
+      {/* Queue Name Modal */}
+      <Modal
+        visible={showQueueModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowQueueModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Queue Order</Text>
+            <Text style={styles.modalSubtitle}>Enter a name for this order</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g., Mark"
+              value={queueName}
+              onChangeText={setQueueName}
+              autoFocus={true}
+              onSubmitEditing={saveQueue}
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={() => {
+                  setShowQueueModal(false);
+                  setQueueName('');
+                }}
+              >
+                <Text style={styles.modalButtonTextCancel}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonSave]}
+                onPress={saveQueue}
+              >
+                <Text style={styles.modalButtonTextSave}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -419,6 +542,27 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
+    position: 'relative',
+  },
+  headerButtonDisabled: {
+    opacity: 0.5,
+  },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   categoryContainer: {
     marginBottom: 24,
@@ -514,6 +658,85 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 40,
+  },
+  actionButtonsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  queueButton: {
+    backgroundColor: '#ffffff',
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#2563eb',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 48,
+    height: 48,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 20,
+    width: 340,
+    maxWidth: 340,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 8,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 16,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 20,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalButtonCancel: {
+    backgroundColor: '#f3f4f6',
+  },
+  modalButtonSave: {
+    backgroundColor: '#2563eb',
+  },
+  modalButtonTextCancel: {
+    color: '#374151',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  modalButtonTextSave: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 

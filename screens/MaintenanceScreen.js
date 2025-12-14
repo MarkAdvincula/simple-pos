@@ -258,9 +258,55 @@ const MaintenanceScreen = () => {
     }
   }
 
-  const renderCategory = ({ item }) => (
+  const handleMoveCategoryUp = async (categoryId) => {
+    try {
+      await databaseService.moveCategoryUp(categoryId)
+      await loadCategoriesWithItems()
+    } catch (error) {
+      console.error('Error moving category up:', error)
+      Alert.alert('Error', 'Failed to reorder category')
+    }
+  }
+
+  const handleMoveCategoryDown = async (categoryId) => {
+    try {
+      await databaseService.moveCategoryDown(categoryId)
+      await loadCategoriesWithItems()
+    } catch (error) {
+      console.error('Error moving category down:', error)
+      Alert.alert('Error', 'Failed to reorder category')
+    }
+  }
+
+  const renderCategory = ({ item, index }) => (
     <View style={styles.categoryCard}>
-      <Text style={styles.categoryName}>{item.category_name}</Text>
+      <View style={styles.categoryHeader}>
+        <Text style={styles.categoryName}>{item.category_name}</Text>
+        <View style={styles.categoryOrderButtons}>
+          <TouchableOpacity
+            style={[styles.orderButton, index === 0 && styles.orderButtonDisabled]}
+            onPress={() => handleMoveCategoryUp(item.id)}
+            disabled={index === 0}
+          >
+            <Ionicons
+              name="chevron-up"
+              size={18}
+              color={index === 0 ? '#ccc' : '#2563eb'}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.orderButton, index === categories.length - 1 && styles.orderButtonDisabled]}
+            onPress={() => handleMoveCategoryDown(item.id)}
+            disabled={index === categories.length - 1}
+          >
+            <Ionicons
+              name="chevron-down"
+              size={18}
+              color={index === categories.length - 1 ? '#ccc' : '#2563eb'}
+            />
+          </TouchableOpacity>
+        </View>
+      </View>
       <View style={styles.itemsContainer}>
         {item.items.map((menuItem, index) => (
           <View key={index} style={styles.itemRow}>
@@ -507,11 +553,29 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderRadius: 8,
   },
+  categoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   categoryName: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 12,
     color: '#2e7d32',
+    flex: 1,
+  },
+  categoryOrderButtons: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  orderButton: {
+    padding: 4,
+    borderRadius: 4,
+    backgroundColor: '#e3f2fd',
+  },
+  orderButtonDisabled: {
+    backgroundColor: '#f5f5f5',
   },
   itemsContainer: {
     paddingLeft: 8,

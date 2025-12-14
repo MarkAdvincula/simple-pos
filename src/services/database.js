@@ -79,9 +79,21 @@ class DatabaseService {
             await this.db.execAsync(`
             CREATE TABLE IF NOT EXISTS categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                category_name TEXT NOT NULL
+                category_name TEXT NOT NULL,
+                display_order INTEGER DEFAULT 0
             );
             `);
+
+            // Add display_order column to existing table if it doesn't exist
+            try {
+                await this.db.execAsync(`
+                    ALTER TABLE categories
+                    ADD COLUMN display_order INTEGER DEFAULT 0
+                `);
+            } catch (error) {
+                // Column might already exist, ignore the error
+                console.log('display_order column might already exist:', error.message);
+            }
             /**
              * Items:
              * 
@@ -106,7 +118,32 @@ class DatabaseService {
                 FOREIGN KEY (cid) REFERENCES categories (id)
             );
             `);
-            
+
+            // Create queued orders table
+            await this.db.execAsync(`
+                CREATE TABLE IF NOT EXISTS queued_orders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    queue_name TEXT NOT NULL,
+                    created_date TEXT NOT NULL,
+                    created_time TEXT NOT NULL,
+                    created_datetime TEXT NOT NULL,
+                    item_count INTEGER NOT NULL,
+                    total_amount REAL NOT NULL
+                );
+            `);
+
+            // Create queued order items table
+            await this.db.execAsync(`
+                CREATE TABLE IF NOT EXISTS queued_order_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    queue_id INTEGER NOT NULL,
+                    item_name TEXT NOT NULL,
+                    unit_price REAL NOT NULL,
+                    quantity INTEGER NOT NULL,
+                    line_total REAL NOT NULL,
+                    FOREIGN KEY (queue_id) REFERENCES queued_orders (id)
+                );
+            `);
 
 
         } catch (error) {
@@ -116,16 +153,46 @@ class DatabaseService {
     }
 
 
+    async initializeCategoryOrder() {
+        await this.init();
+
+        try {
+            // Get all categories ordered by name (fallback for unordered ones)
+            const categories = await this.db.getAllAsync(`
+                SELECT id FROM categories ORDER BY category_name ASC
+            `);
+
+            // Update each category with proper display_order
+            for (let i = 0; i < categories.length; i++) {
+                await this.db.runAsync(
+                    'UPDATE categories SET display_order = ? WHERE id = ?',
+                    [i + 1, categories[i].id]
+                );
+            }
+        } catch (error) {
+            console.error('Error initializing category order:', error);
+        }
+    }
+
     async getCategoriesWithItems() {
         await this.init();
-    
+
         try {
-            const categories = await this.db.getAllAsync(`
-                SELECT id, category_name
-                FROM categories
-                ORDER BY category_name
+            // Initialize order if needed (first time or all zeros)
+            const checkOrder = await this.db.getFirstAsync(`
+                SELECT COUNT(*) as count FROM categories WHERE display_order > 0
             `);
-    
+
+            if (checkOrder?.count === 0) {
+                await this.initializeCategoryOrder();
+            }
+
+            const categories = await this.db.getAllAsync(`
+                SELECT id, category_name, display_order
+                FROM categories
+                ORDER BY display_order ASC, category_name ASC
+            `);
+
             for (const category of categories) {
                 const items = await this.db.getAllAsync(`
                     SELECT id, item_name, price
@@ -133,10 +200,10 @@ class DatabaseService {
                     WHERE cid = ?
                     ORDER BY item_name
                 `, [category.id]);
-                
+
                 category.items = items;
             }
-    
+
             return categories;
         } catch (error) {
             console.error('Error getting categories with items:', error);
@@ -146,15 +213,81 @@ class DatabaseService {
 
     async addCategory(categoryName) {
         await this.init();
-    
+
         try {
+            // Get the max display_order and add 1
+            const maxOrder = await this.db.getFirstAsync(
+                'SELECT MAX(display_order) as max_order FROM categories'
+            );
+            const newOrder = (maxOrder?.max_order || 0) + 1;
+
             const result = await this.db.runAsync(
-                'INSERT INTO categories (category_name) VALUES (?)',
-                [categoryName]
+                'INSERT INTO categories (category_name, display_order) VALUES (?, ?)',
+                [categoryName, newOrder]
             );
             return result.lastInsertRowId;
         } catch (error) {
             console.error('Error adding category:', error);
+            throw error;
+        }
+    }
+
+    async updateCategoryOrder(categoryId, newOrder) {
+        await this.init();
+
+        try {
+            await this.db.runAsync(
+                'UPDATE categories SET display_order = ? WHERE id = ?',
+                [newOrder, categoryId]
+            );
+        } catch (error) {
+            console.error('Error updating category order:', error);
+            throw error;
+        }
+    }
+
+    async moveCategoryUp(categoryId) {
+        await this.init();
+
+        try {
+            const categories = await this.db.getAllAsync(
+                'SELECT id, display_order FROM categories ORDER BY display_order ASC'
+            );
+
+            const currentIndex = categories.findIndex(c => c.id === categoryId);
+            if (currentIndex > 0) {
+                // Swap with previous category
+                const currentOrder = categories[currentIndex].display_order;
+                const prevOrder = categories[currentIndex - 1].display_order;
+
+                await this.updateCategoryOrder(categoryId, prevOrder);
+                await this.updateCategoryOrder(categories[currentIndex - 1].id, currentOrder);
+            }
+        } catch (error) {
+            console.error('Error moving category up:', error);
+            throw error;
+        }
+    }
+
+    async moveCategoryDown(categoryId) {
+        await this.init();
+
+        try {
+            const categories = await this.db.getAllAsync(
+                'SELECT id, display_order FROM categories ORDER BY display_order ASC'
+            );
+
+            const currentIndex = categories.findIndex(c => c.id === categoryId);
+            if (currentIndex < categories.length - 1 && currentIndex !== -1) {
+                // Swap with next category
+                const currentOrder = categories[currentIndex].display_order;
+                const nextOrder = categories[currentIndex + 1].display_order;
+
+                await this.updateCategoryOrder(categoryId, nextOrder);
+                await this.updateCategoryOrder(categories[currentIndex + 1].id, currentOrder);
+            }
+        } catch (error) {
+            console.error('Error moving category down:', error);
             throw error;
         }
     }
@@ -528,6 +661,121 @@ class DatabaseService {
         } catch (error) {
             console.error('Error clearing menu:', error);
             throw error;
+        }
+    }
+
+    // Queue management methods
+    async addQueuedOrder(queueName, items, totalAmount) {
+        await this.init();
+
+        const now = new Date();
+        const datetime = now.toISOString();
+        const date = now.toISOString().split('T')[0]; // YYYY-MM-DD
+        const time = now.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        }); // e.g., "3:00 PM"
+
+        try {
+            const result = await this.db.runAsync(
+                'INSERT INTO queued_orders (queue_name, created_date, created_time, created_datetime, item_count, total_amount) VALUES (?, ?, ?, ?, ?, ?)',
+                [queueName, date, time, datetime, items.length, totalAmount]
+            );
+
+            const queueId = result.lastInsertRowId;
+
+            // Add items to queue
+            for (const item of items) {
+                const lineTotal = item.price * item.quantity;
+                await this.db.runAsync(
+                    'INSERT INTO queued_order_items (queue_id, item_name, unit_price, quantity, line_total) VALUES (?, ?, ?, ?, ?)',
+                    [queueId, item.name, item.price, item.quantity, lineTotal]
+                );
+            }
+
+            return queueId;
+        } catch (error) {
+            console.error('Error adding queued order:', error);
+            throw error;
+        }
+    }
+
+    async getQueuedOrders() {
+        await this.init();
+
+        try {
+            const queues = await this.db.getAllAsync(`
+                SELECT * FROM queued_orders
+                ORDER BY created_datetime DESC
+            `);
+
+            // Get items for each queue
+            for (const queue of queues) {
+                const items = await this.db.getAllAsync(`
+                    SELECT item_name, unit_price, quantity, line_total
+                    FROM queued_order_items
+                    WHERE queue_id = ?
+                `, [queue.id]);
+
+                queue.items = items;
+            }
+
+            return queues;
+        } catch (error) {
+            console.error('Error getting queued orders:', error);
+            throw error;
+        }
+    }
+
+    async getQueuedOrderById(id) {
+        await this.init();
+
+        try {
+            const queue = await this.db.getFirstAsync(`
+                SELECT * FROM queued_orders WHERE id = ?
+            `, [id]);
+
+            if (queue) {
+                const items = await this.db.getAllAsync(`
+                    SELECT item_name, unit_price, quantity, line_total
+                    FROM queued_order_items
+                    WHERE queue_id = ?
+                `, [id]);
+
+                queue.items = items;
+            }
+
+            return queue;
+        } catch (error) {
+            console.error('Error getting queued order by ID:', error);
+            throw error;
+        }
+    }
+
+    async deleteQueuedOrder(id) {
+        await this.init();
+
+        try {
+            await this.db.runAsync('DELETE FROM queued_order_items WHERE queue_id = ?', [id]);
+            await this.db.runAsync('DELETE FROM queued_orders WHERE id = ?', [id]);
+        } catch (error) {
+            console.error('Error deleting queued order:', error);
+            throw error;
+        }
+    }
+
+    async getQueueCount() {
+        await this.init();
+
+        try {
+            const result = await this.db.getFirstAsync(`
+                SELECT COUNT(*) as count FROM queued_orders
+            `);
+            return result?.count || 0;
+        } catch (error) {
+            console.error('Error getting queue count:', error);
+            return 0;
         }
     }
 
