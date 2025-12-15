@@ -1,12 +1,13 @@
-import { View, Text, FlatList, StyleSheet, RefreshControl, TouchableOpacity, Modal, TextInput, Alert } from 'react-native'
-import React, { useState, useEffect } from 'react'
+import { View, Text, FlatList, StyleSheet, RefreshControl, TouchableOpacity, Modal, TextInput, Alert, ScrollView } from 'react-native'
+import React, { useState, useEffect, useCallback } from 'react'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { useFocusEffect } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
 import { Picker } from '@react-native-picker/picker'
 import databaseService from '../src/services/database'
 import menuExportService from '../src/services/menuExportService'
 
-const MaintenanceScreen = () => {
+const MaintenanceScreen = ({ navigation }) => {
   const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -27,9 +28,31 @@ const MaintenanceScreen = () => {
   const [addCategoryModalVisible, setAddCategoryModalVisible] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState('')
 
+  // Option groups states
+  const [allOptionGroups, setAllOptionGroups] = useState([])
+  const [selectedOptionGroups, setSelectedOptionGroups] = useState([])
+  const [optionGroupsModalVisible, setOptionGroupsModalVisible] = useState(false)
+
   useEffect(() => {
     loadCategoriesWithItems()
+    loadOptionGroups()
   }, [])
+
+  // Reload option groups when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadOptionGroups()
+    }, [])
+  )
+
+  const loadOptionGroups = async () => {
+    try {
+      const groups = await databaseService.getOptionGroups()
+      setAllOptionGroups(groups)
+    } catch (error) {
+      console.error('Error loading option groups:', error)
+    }
+  }
 
   const loadCategoriesWithItems = async () => {
     try {
@@ -50,10 +73,20 @@ const MaintenanceScreen = () => {
   }
 
   // Edit item functions
-  const openEditModal = (item, categoryId) => {
+  const openEditModal = async (item, categoryId) => {
     setEditingItem({ ...item, categoryId })
     setEditName(item.item_name)
     setEditPrice(item.price.toString())
+
+    // Load linked option groups for this item
+    try {
+      const linkedGroups = await databaseService.getItemOptionGroups(item.id)
+      setSelectedOptionGroups(linkedGroups.map(g => g.id))
+    } catch (error) {
+      console.error('Error loading item option groups:', error)
+      setSelectedOptionGroups([])
+    }
+
     setEditModalVisible(true)
   }
 
@@ -62,6 +95,7 @@ const MaintenanceScreen = () => {
     setEditingItem(null)
     setEditName('')
     setEditPrice('')
+    setSelectedOptionGroups([])
   }
 
   const saveEdit = async () => {
@@ -78,6 +112,25 @@ const MaintenanceScreen = () => {
 
     try {
       await databaseService.updateItem(editingItem.id, editName.trim(), price)
+
+      // Update option group links
+      const currentGroups = await databaseService.getItemOptionGroups(editingItem.id)
+      const currentGroupIds = currentGroups.map(g => g.id)
+
+      // Remove unselected groups
+      for (const groupId of currentGroupIds) {
+        if (!selectedOptionGroups.includes(groupId)) {
+          await databaseService.unlinkItemFromOptionGroup(editingItem.id, groupId)
+        }
+      }
+
+      // Add newly selected groups
+      for (const groupId of selectedOptionGroups) {
+        if (!currentGroupIds.includes(groupId)) {
+          await databaseService.linkItemToOptionGroup(editingItem.id, groupId)
+        }
+      }
+
       closeEditModal()
       await loadCategoriesWithItems()
       Alert.alert('Success', 'Item updated successfully')
@@ -102,6 +155,7 @@ const MaintenanceScreen = () => {
     setNewItemName('')
     setNewItemPrice('')
     setSelectedCategoryId('')
+    setSelectedOptionGroups([])
   }
 
   const saveNewItem = async () => {
@@ -117,13 +171,28 @@ const MaintenanceScreen = () => {
     }
 
     try {
-      await databaseService.addItem(parseInt(selectedCategoryId), newItemName.trim(), price)
+      const itemId = await databaseService.addItem(parseInt(selectedCategoryId), newItemName.trim(), price)
+
+      // Link selected option groups to the new item
+      for (const groupId of selectedOptionGroups) {
+        await databaseService.linkItemToOptionGroup(itemId, groupId)
+      }
+
       closeAddItemModal()
       await loadCategoriesWithItems()
       Alert.alert('Success', 'Item added successfully')
     } catch (error) {
       console.error('Error adding item:', error)
       Alert.alert('Error', 'Failed to add item')
+    }
+  }
+
+  // Option groups functions
+  const toggleOptionGroup = (groupId) => {
+    if (selectedOptionGroups.includes(groupId)) {
+      setSelectedOptionGroups(selectedOptionGroups.filter(id => id !== groupId))
+    } else {
+      setSelectedOptionGroups([...selectedOptionGroups, groupId])
     }
   }
 
@@ -278,6 +347,26 @@ const MaintenanceScreen = () => {
     }
   }
 
+  const handleMoveItemUp = async (itemId, categoryId) => {
+    try {
+      await databaseService.moveItemUp(itemId, categoryId)
+      await loadCategoriesWithItems()
+    } catch (error) {
+      console.error('Error moving item up:', error)
+      Alert.alert('Error', 'Failed to reorder item')
+    }
+  }
+
+  const handleMoveItemDown = async (itemId, categoryId) => {
+    try {
+      await databaseService.moveItemDown(itemId, categoryId)
+      await loadCategoriesWithItems()
+    } catch (error) {
+      console.error('Error moving item down:', error)
+      Alert.alert('Error', 'Failed to reorder item')
+    }
+  }
+
   const renderCategory = ({ item, index }) => (
     <View style={styles.categoryCard}>
       <View style={styles.categoryHeader}>
@@ -308,8 +397,32 @@ const MaintenanceScreen = () => {
         </View>
       </View>
       <View style={styles.itemsContainer}>
-        {item.items.map((menuItem, index) => (
-          <View key={index} style={styles.itemRow}>
+        {item.items.map((menuItem, itemIndex) => (
+          <View key={itemIndex} style={styles.itemRow}>
+            <View style={styles.itemOrderButtons}>
+              <TouchableOpacity
+                style={[styles.itemOrderButton, itemIndex === 0 && styles.orderButtonDisabled]}
+                onPress={() => handleMoveItemUp(menuItem.id, item.id)}
+                disabled={itemIndex === 0}
+              >
+                <Ionicons
+                  name="chevron-up"
+                  size={16}
+                  color={itemIndex === 0 ? '#ccc' : '#2563eb'}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.itemOrderButton, itemIndex === item.items.length - 1 && styles.orderButtonDisabled]}
+                onPress={() => handleMoveItemDown(menuItem.id, item.id)}
+                disabled={itemIndex === item.items.length - 1}
+              >
+                <Ionicons
+                  name="chevron-down"
+                  size={16}
+                  color={itemIndex === item.items.length - 1 ? '#ccc' : '#2563eb'}
+                />
+              </TouchableOpacity>
+            </View>
             <View style={styles.itemInfo}>
               <Text style={styles.itemName}>{menuItem.item_name}</Text>
               <Text style={styles.itemPrice}>₱{menuItem.price.toFixed(2)}</Text>
@@ -345,6 +458,22 @@ const MaintenanceScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="chevron-back" size={24} color="#1f2937" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.homeButton}
+            onPress={() => navigation.navigate('Menu')}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="home" size={22} color="#2563eb" />
+          </TouchableOpacity>
+        </View>
         <Text style={styles.title}>Menu Items</Text>
         <View style={styles.headerButtons}>
           <TouchableOpacity style={styles.addButton} onPress={openAddCategoryModal}>
@@ -359,6 +488,13 @@ const MaintenanceScreen = () => {
       </View>
 
       <View style={styles.menuActions}>
+        <TouchableOpacity
+          style={styles.optionGroupsActionButton}
+          onPress={() => navigation.navigate('OptionGroups')}
+        >
+          <Ionicons name="options-outline" size={18} color="white" />
+          <Text style={styles.actionButtonText}>Option Groups</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.exportButton} onPress={handleExportMenu}>
           <Ionicons name="download-outline" size={18} color="white" />
           <Text style={styles.actionButtonText}>Export</Text>
@@ -392,7 +528,7 @@ const MaintenanceScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Edit Item</Text>
-            
+
             <Text style={styles.label}>Item Name</Text>
             <TextInput
               style={styles.input}
@@ -400,7 +536,7 @@ const MaintenanceScreen = () => {
               onChangeText={setEditName}
               placeholder="Enter item name"
             />
-            
+
             <Text style={styles.label}>Price</Text>
             <TextInput
               style={styles.input}
@@ -409,7 +545,18 @@ const MaintenanceScreen = () => {
               placeholder="Enter price"
               keyboardType="numeric"
             />
-            
+
+            <TouchableOpacity
+              style={styles.optionGroupsButton}
+              onPress={() => setOptionGroupsModalVisible(true)}
+            >
+              <Ionicons name="options-outline" size={20} color="#7c3aed" />
+              <Text style={styles.optionGroupsButtonText}>
+                Option Groups ({selectedOptionGroups.length} selected)
+              </Text>
+              <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+            </TouchableOpacity>
+
             <View style={styles.modalButtons}>
               <TouchableOpacity style={styles.cancelButton} onPress={closeEditModal}>
                 <Text style={styles.cancelButtonText}>Cancel</Text>
@@ -432,7 +579,7 @@ const MaintenanceScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Add New Item</Text>
-            
+
             <Text style={styles.label}>Category</Text>
             <View style={styles.pickerContainer}>
               <Picker
@@ -450,7 +597,7 @@ const MaintenanceScreen = () => {
                 ))}
               </Picker>
             </View>
-            
+
             <Text style={styles.label}>Item Name</Text>
             <TextInput
               style={styles.input}
@@ -458,7 +605,7 @@ const MaintenanceScreen = () => {
               onChangeText={setNewItemName}
               placeholder="Enter item name"
             />
-            
+
             <Text style={styles.label}>Price</Text>
             <TextInput
               style={styles.input}
@@ -467,7 +614,18 @@ const MaintenanceScreen = () => {
               placeholder="Enter price"
               keyboardType="numeric"
             />
-            
+
+            <TouchableOpacity
+              style={styles.optionGroupsButton}
+              onPress={() => setOptionGroupsModalVisible(true)}
+            >
+              <Ionicons name="options-outline" size={20} color="#7c3aed" />
+              <Text style={styles.optionGroupsButtonText}>
+                Option Groups ({selectedOptionGroups.length} selected)
+              </Text>
+              <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+            </TouchableOpacity>
+
             <View style={styles.modalButtons}>
               <TouchableOpacity style={styles.cancelButton} onPress={closeAddItemModal}>
                 <Text style={styles.cancelButtonText}>Cancel</Text>
@@ -490,7 +648,7 @@ const MaintenanceScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Add New Category</Text>
-            
+
             <Text style={styles.label}>Category Name</Text>
             <TextInput
               style={styles.input}
@@ -498,7 +656,7 @@ const MaintenanceScreen = () => {
               onChangeText={setNewCategoryName}
               placeholder="Enter category name"
             />
-            
+
             <View style={styles.modalButtons}>
               <TouchableOpacity style={styles.cancelButton} onPress={closeAddCategoryModal}>
                 <Text style={styles.cancelButtonText}>Cancel</Text>
@@ -507,6 +665,64 @@ const MaintenanceScreen = () => {
                 <Text style={styles.saveButtonText}>Add</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Option Groups Selection Modal */}
+      <Modal
+        visible={optionGroupsModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setOptionGroupsModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Select Option Groups</Text>
+
+            {allOptionGroups.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyText}>No option groups available</Text>
+                <Text style={styles.emptySubtext}>
+                  Create option groups in the Option Groups screen first
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.optionGroupsList}>
+                {allOptionGroups.map((group) => (
+                  <TouchableOpacity
+                    key={group.id}
+                    style={styles.optionGroupItem}
+                    onPress={() => toggleOptionGroup(group.id)}
+                  >
+                    <View style={styles.optionGroupItemLeft}>
+                      <View style={[
+                        styles.checkbox,
+                        selectedOptionGroups.includes(group.id) && styles.checkboxChecked
+                      ]}>
+                        {selectedOptionGroups.includes(group.id) && (
+                          <Ionicons name="checkmark" size={16} color="#ffffff" />
+                        )}
+                      </View>
+                      <View style={styles.optionGroupInfo}>
+                        <Text style={styles.optionGroupItemName}>{group.name}</Text>
+                        <Text style={styles.optionGroupItemDetail}>
+                          {group.choices?.length || 0} choices • {group.selection_type === 'single' ? 'Single' : 'Multiple'} select
+                          {group.is_required === 1 && ' • Required'}
+                        </Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setOptionGroupsModalVisible(false)}
+            >
+              <Text style={styles.closeButtonText}>Done</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -525,9 +741,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  backButton: {
+    padding: 8,
+  },
+  homeButton: {
+    padding: 8,
+  },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
+    flex: 1,
+    marginLeft: 8,
   },
   headerButtons: {
     flexDirection: 'row',
@@ -586,6 +815,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     paddingHorizontal: 4,
+  },
+  itemOrderButtons: {
+    flexDirection: 'row',
+    gap: 2,
+    marginRight: 8,
+  },
+  itemOrderButton: {
+    padding: 2,
+    borderRadius: 3,
+    backgroundColor: '#e3f2fd',
   },
   itemInfo: {
     flex: 1,
@@ -687,6 +926,30 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingHorizontal: 8,
   },
+  optionGroupsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#7c3aed',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    gap: 4,
+    flex: 1,
+    marginHorizontal: 4,
+    justifyContent: 'center',
+  },
+  optionGroupsActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#7c3aed',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    gap: 4,
+    flex: 1,
+    marginHorizontal: 4,
+    justifyContent: 'center',
+  },
   exportButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -727,6 +990,96 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  optionGroupsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#faf5ff',
+    borderWidth: 1,
+    borderColor: '#e9d5ff',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  optionGroupsButtonText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#7c3aed',
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  optionGroupsList: {
+    maxHeight: 400,
+  },
+  optionGroupItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  optionGroupItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#d1d5db',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  checkboxChecked: {
+    backgroundColor: '#2563eb',
+    borderColor: '#2563eb',
+  },
+  optionGroupInfo: {
+    flex: 1,
+  },
+  optionGroupItemName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginBottom: 2,
+  },
+  optionGroupItemDetail: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  closeButton: {
+    backgroundColor: '#2563eb',
+    borderRadius: 8,
+    padding: 14,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  closeButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  emptyState: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6b7280',
+    marginBottom: 4,
+  },
+  emptySubtext: {
+    fontSize: 13,
+    color: '#9ca3af',
+    textAlign: 'center',
   },
 })
 

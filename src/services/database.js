@@ -76,6 +76,26 @@ class DatabaseService {
                 );
             `);
 
+            // Add selected_options column to transaction_items_tbl if it doesn't exist
+            try {
+                await this.db.execAsync(`
+                    ALTER TABLE transaction_items_tbl ADD COLUMN selected_options TEXT;
+                `);
+            } catch (error) {
+                // Column might already exist, ignore the error
+                console.log('selected_options column might already exist:', error.message);
+            }
+
+            // Add selected_options column to queued_order_items if it doesn't exist
+            try {
+                await this.db.execAsync(`
+                    ALTER TABLE queued_order_items ADD COLUMN selected_options TEXT;
+                `);
+            } catch (error) {
+                // Column might already exist, ignore the error
+                console.log('selected_options column might already exist in queued_order_items:', error.message);
+            }
+
             await this.db.execAsync(`
             CREATE TABLE IF NOT EXISTS categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,7 +104,7 @@ class DatabaseService {
             );
             `);
 
-            // Add display_order column to existing table if it doesn't exist
+            // Add display_order column to categories if it doesn't exist
             try {
                 await this.db.execAsync(`
                     ALTER TABLE categories
@@ -92,7 +112,46 @@ class DatabaseService {
                 `);
             } catch (error) {
                 // Column might already exist, ignore the error
-                console.log('display_order column might already exist:', error.message);
+                console.log('display_order column might already exist in categories:', error.message);
+            }
+
+            // Add display_order column to items if it doesn't exist
+            try {
+                await this.db.execAsync(`
+                    ALTER TABLE items
+                    ADD COLUMN display_order INTEGER DEFAULT 0
+                `);
+                console.log('display_order column added to items table');
+            } catch (error) {
+                // Column might already exist, ignore the error
+                console.log('display_order column might already exist in items:', error.message);
+            }
+
+            // Initialize display_order for items that have 0 or duplicate values
+            try {
+                const categories = await this.db.getAllAsync('SELECT id FROM categories');
+                for (const category of categories) {
+                    // Get all items in this category, check if they need initialization
+                    const items = await this.db.getAllAsync(
+                        'SELECT id, display_order FROM items WHERE cid = ? ORDER BY id ASC',
+                        [category.id]
+                    );
+
+                    // Check if all items have display_order = 0 (needs initialization)
+                    const needsInit = items.every(item => item.display_order === 0);
+
+                    if (needsInit && items.length > 0) {
+                        console.log(`Initializing display_order for category ${category.id}`);
+                        for (let i = 0; i < items.length; i++) {
+                            await this.db.runAsync(
+                                'UPDATE items SET display_order = ? WHERE id = ?',
+                                [i + 1, items[i].id]
+                            );
+                        }
+                    }
+                }
+            } catch (error) {
+                console.log('Error initializing display_order:', error.message);
             }
             /**
              * Items:
@@ -115,6 +174,7 @@ class DatabaseService {
                 cid INTEGER NOT NULL,
                 item_name TEXT NOT NULL,
                 price REAL NOT NULL,
+                display_order INTEGER DEFAULT 0,
                 FOREIGN KEY (cid) REFERENCES categories (id)
             );
             `);
@@ -142,6 +202,83 @@ class DatabaseService {
                     quantity INTEGER NOT NULL,
                     line_total REAL NOT NULL,
                     FOREIGN KEY (queue_id) REFERENCES queued_orders (id)
+                );
+            `);
+
+            // Create option groups table
+            await this.db.execAsync(`
+                CREATE TABLE IF NOT EXISTS option_groups (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    is_required INTEGER DEFAULT 0,
+                    selection_type TEXT DEFAULT 'single'
+                );
+            `);
+
+            // Add new columns to option_groups table if they don't exist (for older databases)
+            // Note: These columns are now in the CREATE TABLE above, but keep for migration
+            try {
+                await this.db.execAsync(`
+                    ALTER TABLE option_groups
+                    ADD COLUMN is_required INTEGER DEFAULT 0
+                `);
+            } catch (error) {
+                console.log('is_required column might already exist in option_groups:', error.message);
+            }
+
+            // Migrate option_choices table to new structure
+            // Check if old structure exists and drop it
+            try {
+                // Check if options table exists (old structure)
+                const optionsTableExists = await this.db.getFirstAsync(`
+                    SELECT name FROM sqlite_master WHERE type='table' AND name='options'
+                `);
+
+                if (optionsTableExists) {
+                    console.log('Old structure detected, dropping old tables...');
+                    await this.db.execAsync('DROP TABLE IF EXISTS option_choices');
+                    await this.db.execAsync('DROP TABLE IF EXISTS options');
+                    console.log('Old tables dropped successfully');
+                }
+            } catch (error) {
+                console.log('Error checking for old tables:', error.message);
+            }
+
+            // Try to check if option_choices has old column structure
+            try {
+                const hasOldColumn = await this.db.getFirstAsync(`
+                    SELECT sql FROM sqlite_master
+                    WHERE type='table' AND name='option_choices' AND sql LIKE '%option_id%'
+                `);
+
+                if (hasOldColumn) {
+                    console.log('Old option_choices structure detected, recreating...');
+                    await this.db.execAsync('DROP TABLE IF EXISTS option_choices');
+                    console.log('Old option_choices table dropped');
+                }
+            } catch (error) {
+                console.log('Error checking option_choices structure:', error.message);
+            }
+
+            // Create option choices table (now directly under option groups)
+            await this.db.execAsync(`
+                CREATE TABLE IF NOT EXISTS option_choices (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    option_group_id INTEGER NOT NULL,
+                    choice_name TEXT NOT NULL,
+                    price REAL DEFAULT 0,
+                    FOREIGN KEY (option_group_id) REFERENCES option_groups (id)
+                );
+            `);
+
+            // Create item_option_groups linking table
+            await this.db.execAsync(`
+                CREATE TABLE IF NOT EXISTS item_option_groups (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    item_id INTEGER NOT NULL,
+                    option_group_id INTEGER NOT NULL,
+                    FOREIGN KEY (item_id) REFERENCES items (id),
+                    FOREIGN KEY (option_group_id) REFERENCES option_groups (id)
                 );
             `);
 
@@ -195,10 +332,10 @@ class DatabaseService {
 
             for (const category of categories) {
                 const items = await this.db.getAllAsync(`
-                    SELECT id, item_name, price
+                    SELECT id, item_name, price, display_order
                     FROM items
                     WHERE cid = ?
-                    ORDER BY item_name
+                    ORDER BY display_order ASC, item_name ASC
                 `, [category.id]);
 
                 category.items = items;
@@ -291,14 +428,84 @@ class DatabaseService {
             throw error;
         }
     }
-    
+
+    // Item ordering methods
+    async updateItemOrder(itemId, newOrder) {
+        await this.init();
+
+        try {
+            await this.db.runAsync(
+                'UPDATE items SET display_order = ? WHERE id = ?',
+                [newOrder, itemId]
+            );
+        } catch (error) {
+            console.error('Error updating item order:', error);
+            throw error;
+        }
+    }
+
+    async moveItemUp(itemId, categoryId) {
+        await this.init();
+
+        try {
+            const items = await this.db.getAllAsync(
+                'SELECT id, display_order FROM items WHERE cid = ? ORDER BY display_order ASC',
+                [categoryId]
+            );
+
+            const currentIndex = items.findIndex(i => i.id === itemId);
+            if (currentIndex > 0) {
+                // Swap with previous item
+                const currentOrder = items[currentIndex].display_order;
+                const prevOrder = items[currentIndex - 1].display_order;
+
+                await this.updateItemOrder(itemId, prevOrder);
+                await this.updateItemOrder(items[currentIndex - 1].id, currentOrder);
+            }
+        } catch (error) {
+            console.error('Error moving item up:', error);
+            throw error;
+        }
+    }
+
+    async moveItemDown(itemId, categoryId) {
+        await this.init();
+
+        try {
+            const items = await this.db.getAllAsync(
+                'SELECT id, display_order FROM items WHERE cid = ? ORDER BY display_order ASC',
+                [categoryId]
+            );
+
+            const currentIndex = items.findIndex(i => i.id === itemId);
+            if (currentIndex < items.length - 1 && currentIndex !== -1) {
+                // Swap with next item
+                const currentOrder = items[currentIndex].display_order;
+                const nextOrder = items[currentIndex + 1].display_order;
+
+                await this.updateItemOrder(itemId, nextOrder);
+                await this.updateItemOrder(items[currentIndex + 1].id, currentOrder);
+            }
+        } catch (error) {
+            console.error('Error moving item down:', error);
+            throw error;
+        }
+    }
+
     async addItem(categoryId, itemName, price) {
         await this.init();
-    
+
         try {
+            // Get the max display_order for items in this category and add 1
+            const maxOrder = await this.db.getFirstAsync(
+                'SELECT MAX(display_order) as max_order FROM items WHERE cid = ?',
+                [categoryId]
+            );
+            const newOrder = (maxOrder?.max_order || 0) + 1;
+
             const result = await this.db.runAsync(
-                'INSERT INTO items (cid, item_name, price) VALUES (?, ?, ?)',
-                [categoryId, itemName, price]
+                'INSERT INTO items (cid, item_name, price, display_order) VALUES (?, ?, ?, ?)',
+                [categoryId, itemName, price, newOrder]
             );
             return result.lastInsertRowId;
         } catch (error) {
@@ -338,7 +545,20 @@ class DatabaseService {
     async addTransaction(items, paymentMethod, status = 'COMPLETED') {
         await this.init(); // Ensure database is initialized
 
-        const totalAmount = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        // Helper function to calculate item total with options
+        const calculateItemTotal = (item) => {
+            let total = item.price;
+            if (item.selectedOptions) {
+                Object.values(item.selectedOptions).forEach(choices => {
+                    choices.forEach(choice => {
+                        total += choice.price;
+                    });
+                });
+            }
+            return total * item.quantity;
+        };
+
+        const totalAmount = items.reduce((sum, item) => sum + calculateItemTotal(item), 0);
         const datetime = new Date().toISOString();
 
         try {
@@ -353,10 +573,12 @@ class DatabaseService {
 
             // Add items
             for (const item of items) {
-                const lineTotal = item.price * item.quantity;
+                const lineTotal = calculateItemTotal(item);
+                const selectedOptionsJson = item.selectedOptions ? JSON.stringify(item.selectedOptions) : null;
+
                 await this.db.runAsync(
-                    'INSERT INTO transaction_items_tbl (transaction_id, item_name, unit_price, quantity, line_total) VALUES (?, ?, ?, ?, ?)',
-                    [transactionId, item.name, item.price, item.quantity, lineTotal]
+                    'INSERT INTO transaction_items_tbl (transaction_id, item_name, unit_price, quantity, line_total, selected_options) VALUES (?, ?, ?, ?, ?, ?)',
+                    [transactionId, item.name, item.price, item.quantity, lineTotal, selectedOptionsJson]
                 );
             }
 
@@ -388,12 +610,16 @@ class DatabaseService {
             // Get items for each transaction
             for (const transaction of transactions) {
                 const items = await this.db.getAllAsync(`
-                    SELECT item_name, unit_price, quantity, line_total
+                    SELECT item_name, unit_price, quantity, line_total, selected_options
                     FROM transaction_items_tbl
                     WHERE transaction_id = ?
                 `, [transaction.id]);
-                
-                transaction.items = items;
+
+                // Parse selected_options JSON
+                transaction.items = items.map(item => ({
+                    ...item,
+                    selectedOptions: item.selected_options ? JSON.parse(item.selected_options) : null
+                }));
             }
 
             return transactions;
@@ -413,12 +639,16 @@ class DatabaseService {
 
             if (transaction) {
                 const items = await this.db.getAllAsync(`
-                    SELECT item_name, unit_price, quantity, line_total
+                    SELECT item_name, unit_price, quantity, line_total, selected_options
                     FROM transaction_items_tbl
                     WHERE transaction_id = ?
                 `, [id]);
-                
-                transaction.items = items;
+
+                // Parse selected_options JSON
+                transaction.items = items.map(item => ({
+                    ...item,
+                    selectedOptions: item.selected_options ? JSON.parse(item.selected_options) : null
+                }));
             }
 
             return transaction;
@@ -449,12 +679,16 @@ class DatabaseService {
 
             for (const transaction of transactions) {
                 const items = await this.db.getAllAsync(`
-                    SELECT item_name, unit_price, quantity, line_total
+                    SELECT item_name, unit_price, quantity, line_total, selected_options
                     FROM transaction_items_tbl
                     WHERE transaction_id = ?
                 `, [transaction.id]);
-                
-                transaction.items = items;
+
+                // Parse selected_options JSON
+                transaction.items = items.map(item => ({
+                    ...item,
+                    selectedOptions: item.selected_options ? JSON.parse(item.selected_options) : null
+                }));
             }
 
             return transactions;
@@ -551,15 +785,26 @@ class DatabaseService {
         try {
             const categoriesWithItems = await this.getCategoriesWithItems();
 
+            // Get all option groups for reference
+            const optionGroups = await this.getOptionGroups();
+
             // Transform to exportable format
             const menuData = {
-                version: "1.0",
+                version: "2.0",
                 exportDate: new Date().toISOString(),
+                optionGroups: optionGroups.map(group => ({
+                    id: group.id,
+                    name: group.name,
+                    choices: group.choices
+                })),
                 categories: categoriesWithItems.map(category => ({
                     name: category.category_name,
+                    displayOrder: category.display_order || 0,
                     items: category.items.map(item => ({
                         name: item.item_name,
-                        price: item.price
+                        price: item.price,
+                        displayOrder: item.display_order || 0,
+                        optionGroupIds: item.option_group_ids ? item.option_group_ids.split(',').map(id => parseInt(id.trim())) : []
                     }))
                 }))
             };
@@ -586,6 +831,30 @@ class DatabaseService {
                 await this.db.runAsync('DELETE FROM categories');
             }
 
+            // Import option groups if they exist in the export (version 2.0+)
+            const optionGroupMapping = {}; // Maps old IDs to new IDs
+            if (menuData.optionGroups && Array.isArray(menuData.optionGroups)) {
+                for (const group of menuData.optionGroups) {
+                    // Check if option group already exists
+                    const existingGroup = await this.db.getFirstAsync(
+                        'SELECT id FROM option_groups WHERE name = ?',
+                        [group.name]
+                    );
+
+                    if (existingGroup) {
+                        // Map old ID to existing ID
+                        optionGroupMapping[group.id] = existingGroup.id;
+                    } else {
+                        // Create new option group
+                        const result = await this.db.runAsync(
+                            'INSERT INTO option_groups (name, choices) VALUES (?, ?)',
+                            [group.name, JSON.stringify(group.choices)]
+                        );
+                        optionGroupMapping[group.id] = result.lastInsertRowId;
+                    }
+                }
+            }
+
             // Import categories and items
             for (const category of menuData.categories) {
                 if (!category.name || !Array.isArray(category.items)) {
@@ -601,11 +870,19 @@ class DatabaseService {
 
                 if (existingCategory) {
                     categoryId = existingCategory.id;
+                    // Update display order if importing with order
+                    if (category.displayOrder !== undefined) {
+                        await this.db.runAsync(
+                            'UPDATE categories SET display_order = ? WHERE id = ?',
+                            [category.displayOrder, categoryId]
+                        );
+                    }
                 } else {
-                    // Add new category
+                    // Add new category with display order
+                    const displayOrder = category.displayOrder !== undefined ? category.displayOrder : 0;
                     const result = await this.db.runAsync(
-                        'INSERT INTO categories (category_name) VALUES (?)',
-                        [category.name]
+                        'INSERT INTO categories (category_name, display_order) VALUES (?, ?)',
+                        [category.name, displayOrder]
                     );
                     categoryId = result.lastInsertRowId;
                 }
@@ -616,23 +893,35 @@ class DatabaseService {
                         continue; // Skip invalid items
                     }
 
+                    // Map old option group IDs to new ones
+                    let optionGroupIds = null;
+                    if (item.optionGroupIds && Array.isArray(item.optionGroupIds) && item.optionGroupIds.length > 0) {
+                        const mappedIds = item.optionGroupIds
+                            .map(oldId => optionGroupMapping[oldId])
+                            .filter(id => id !== undefined);
+                        optionGroupIds = mappedIds.length > 0 ? mappedIds.join(',') : null;
+                    }
+
                     // Check if item already exists in this category
                     const existingItem = await this.db.getFirstAsync(
                         'SELECT id FROM items WHERE cid = ? AND item_name = ?',
                         [categoryId, item.name]
                     );
 
+                    // Get display order from import data, default to 0
+                    const displayOrder = item.displayOrder !== undefined ? item.displayOrder : 0;
+
                     if (!existingItem) {
-                        // Add new item
+                        // Add new item with display order
                         await this.db.runAsync(
-                            'INSERT INTO items (cid, item_name, price) VALUES (?, ?, ?)',
-                            [categoryId, item.name, item.price]
+                            'INSERT INTO items (cid, item_name, price, display_order, option_group_ids) VALUES (?, ?, ?, ?, ?)',
+                            [categoryId, item.name, item.price, displayOrder, optionGroupIds]
                         );
                     } else if (replaceExisting) {
-                        // Update existing item if replacing
+                        // Update existing item if replacing, including display order
                         await this.db.runAsync(
-                            'UPDATE items SET price = ? WHERE id = ?',
-                            [item.price, existingItem.id]
+                            'UPDATE items SET price = ?, display_order = ?, option_group_ids = ? WHERE id = ?',
+                            [item.price, displayOrder, optionGroupIds, existingItem.id]
                         );
                     }
                 }
@@ -687,10 +976,23 @@ class DatabaseService {
 
             // Add items to queue
             for (const item of items) {
-                const lineTotal = item.price * item.quantity;
+                // Calculate line total including option prices
+                let lineTotal = item.price;
+                if (item.selectedOptions) {
+                    Object.values(item.selectedOptions).forEach(choices => {
+                        choices.forEach(choice => {
+                            lineTotal += choice.price;
+                        });
+                    });
+                }
+                lineTotal = lineTotal * item.quantity;
+
+                // Serialize selectedOptions to JSON
+                const selectedOptionsJson = item.selectedOptions ? JSON.stringify(item.selectedOptions) : null;
+
                 await this.db.runAsync(
-                    'INSERT INTO queued_order_items (queue_id, item_name, unit_price, quantity, line_total) VALUES (?, ?, ?, ?, ?)',
-                    [queueId, item.name, item.price, item.quantity, lineTotal]
+                    'INSERT INTO queued_order_items (queue_id, item_name, unit_price, quantity, line_total, selected_options) VALUES (?, ?, ?, ?, ?, ?)',
+                    [queueId, item.name, item.price, item.quantity, lineTotal, selectedOptionsJson]
                 );
             }
 
@@ -713,12 +1015,16 @@ class DatabaseService {
             // Get items for each queue
             for (const queue of queues) {
                 const items = await this.db.getAllAsync(`
-                    SELECT item_name, unit_price, quantity, line_total
+                    SELECT item_name, unit_price, quantity, line_total, selected_options
                     FROM queued_order_items
                     WHERE queue_id = ?
                 `, [queue.id]);
 
-                queue.items = items;
+                // Parse selected_options JSON
+                queue.items = items.map(item => ({
+                    ...item,
+                    selectedOptions: item.selected_options ? JSON.parse(item.selected_options) : null
+                }));
             }
 
             return queues;
@@ -738,12 +1044,16 @@ class DatabaseService {
 
             if (queue) {
                 const items = await this.db.getAllAsync(`
-                    SELECT item_name, unit_price, quantity, line_total
+                    SELECT item_name, unit_price, quantity, line_total, selected_options
                     FROM queued_order_items
                     WHERE queue_id = ?
                 `, [id]);
 
-                queue.items = items;
+                // Parse selected_options JSON
+                queue.items = items.map(item => ({
+                    ...item,
+                    selectedOptions: item.selected_options ? JSON.parse(item.selected_options) : null
+                }));
             }
 
             return queue;
@@ -776,6 +1086,139 @@ class DatabaseService {
         } catch (error) {
             console.error('Error getting queue count:', error);
             return 0;
+        }
+    }
+
+    // Option Groups management methods
+    async addOptionGroup(name, isRequired = 0, selectionType = 'single') {
+        await this.init();
+        try {
+            const result = await this.db.runAsync(
+                'INSERT INTO option_groups (name, is_required, selection_type) VALUES (?, ?, ?)',
+                [name, isRequired ? 1 : 0, selectionType]
+            );
+            return result.lastInsertRowId;
+        } catch (error) {
+            console.error('Error adding option group:', error);
+            throw error;
+        }
+    }
+
+    async getOptionGroups() {
+        await this.init();
+        try {
+            const groups = await this.db.getAllAsync('SELECT * FROM option_groups');
+
+            // Get choices for each group
+            for (const group of groups) {
+                const choices = await this.db.getAllAsync(
+                    'SELECT * FROM option_choices WHERE option_group_id = ?',
+                    [group.id]
+                );
+                group.choices = choices;
+            }
+
+            return groups;
+        } catch (error) {
+            console.error('Error getting option groups:', error);
+            throw error;
+        }
+    }
+
+    async deleteOptionGroup(id) {
+        await this.init();
+        try {
+            // Delete in reverse order due to foreign keys
+            // Delete all choices for this option group
+            await this.db.runAsync(
+                'DELETE FROM option_choices WHERE option_group_id = ?',
+                [id]
+            );
+
+            // Delete item links
+            await this.db.runAsync('DELETE FROM item_option_groups WHERE option_group_id = ?', [id]);
+
+            // Delete the option group itself
+            await this.db.runAsync('DELETE FROM option_groups WHERE id = ?', [id]);
+        } catch (error) {
+            console.error('Error deleting option group:', error);
+            throw error;
+        }
+    }
+
+    async addOptionChoice(optionGroupId, choiceName, price) {
+        await this.init();
+        try {
+            const result = await this.db.runAsync(
+                'INSERT INTO option_choices (option_group_id, choice_name, price) VALUES (?, ?, ?)',
+                [optionGroupId, choiceName, price]
+            );
+            return result.lastInsertRowId;
+        } catch (error) {
+            console.error('Error adding option choice:', error);
+            throw error;
+        }
+    }
+
+    async deleteOptionChoice(id) {
+        await this.init();
+        try {
+            await this.db.runAsync('DELETE FROM option_choices WHERE id = ?', [id]);
+        } catch (error) {
+            console.error('Error deleting option choice:', error);
+            throw error;
+        }
+    }
+
+    async linkItemToOptionGroup(itemId, optionGroupId) {
+        await this.init();
+        try {
+            const result = await this.db.runAsync(
+                'INSERT INTO item_option_groups (item_id, option_group_id) VALUES (?, ?)',
+                [itemId, optionGroupId]
+            );
+            return result.lastInsertRowId;
+        } catch (error) {
+            console.error('Error linking item to option group:', error);
+            throw error;
+        }
+    }
+
+    async unlinkItemFromOptionGroup(itemId, optionGroupId) {
+        await this.init();
+        try {
+            await this.db.runAsync(
+                'DELETE FROM item_option_groups WHERE item_id = ? AND option_group_id = ?',
+                [itemId, optionGroupId]
+            );
+        } catch (error) {
+            console.error('Error unlinking item from option group:', error);
+            throw error;
+        }
+    }
+
+    async getItemOptionGroups(itemId) {
+        await this.init();
+        try {
+            const groups = await this.db.getAllAsync(`
+                SELECT og.* FROM option_groups og
+                INNER JOIN item_option_groups iog ON og.id = iog.option_group_id
+                WHERE iog.item_id = ?
+            `, [itemId]);
+
+            // Get choices for each group
+            for (const group of groups) {
+                const choices = await this.db.getAllAsync(
+                    'SELECT * FROM option_choices WHERE option_group_id = ?',
+                    [group.id]
+                );
+                group.choices = choices;
+            }
+
+            return groups;
+        } catch (error) {
+            console.error('Error getting item option groups:', error);
+            throw error;
         }
     }
 

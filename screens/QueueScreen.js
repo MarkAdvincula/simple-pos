@@ -61,6 +61,7 @@ const QueueScreen = ({ navigation }) => {
         name: item.item_name,
         price: item.unit_price,
         quantity: item.quantity,
+        selectedOptions: item.selectedOptions || null,
       }));
 
       // Delete from queue
@@ -81,6 +82,7 @@ const QueueScreen = ({ navigation }) => {
         name: item.item_name,
         price: item.unit_price,
         quantity: item.quantity,
+        selectedOptions: item.selectedOptions || null,
       }));
 
       // Delete from queue
@@ -206,7 +208,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    padding: 30,
     backgroundColor: '#ffffff',
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',

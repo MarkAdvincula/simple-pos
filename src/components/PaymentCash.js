@@ -12,9 +12,22 @@ import {
 } from 'react-native';
 import { useScreen } from '../contexts/ScreenContext';
 
-const PaymentCash = ({ total, onBack, onComplete, isPrinting = false, isProcessingPayment = false }) => {
+const PaymentCash = ({ total, cart = [], onBack, onComplete, isPrinting = false, isProcessingPayment = false }) => {
   const [amountReceived, setAmountReceived] = useState('');
   const { isLargeTablet } = useScreen();
+
+  // Helper function to calculate item total with options
+  const calculateItemTotal = (item) => {
+    let total = item.price;
+    if (item.selectedOptions) {
+      Object.values(item.selectedOptions).forEach(choices => {
+        choices.forEach(choice => {
+          total += choice.price;
+        });
+      });
+    }
+    return total * item.quantity;
+  };
 
   const handleDenominationPress = (value) => {
     const currentAmount = parseFloat(amountReceived) || 0;
@@ -92,6 +105,37 @@ const PaymentCash = ({ total, onBack, onComplete, isPrinting = false, isProcessi
       <View style={[styles.totalContainer, isLargeTablet && styles.tabletTotalContainer]}>
         <Text style={styles.totalText}>Total: ₱{total}</Text>
       </View>
+
+      {/* Items List */}
+      {cart && cart.length > 0 && (
+        <View style={styles.itemsSection}>
+          <Text style={styles.sectionTitle}>Items to Purchase</Text>
+          <ScrollView style={styles.itemsList} nestedScrollEnabled={true}>
+            {cart.map((item, index) => (
+              <View key={index} style={styles.cartItem}>
+                <View style={styles.itemHeader}>
+                  <Text style={styles.itemName}>{item.name}</Text>
+                  <Text style={styles.itemTotal}>₱{calculateItemTotal(item).toFixed(2)}</Text>
+                </View>
+
+                {item.selectedOptions && Object.keys(item.selectedOptions).length > 0 && (
+                  <View style={styles.optionsContainer}>
+                    {Object.entries(item.selectedOptions).map(([groupName, choices], idx) => (
+                      <Text key={idx} style={styles.optionText}>
+                        • {choices.map(c => `${c.name}${c.price > 0 ? ` (+₱${c.price.toFixed(2)})` : ''}`).join(', ')}
+                      </Text>
+                    ))}
+                  </View>
+                )}
+
+                <Text style={styles.itemQuantity}>
+                  ₱{item.price.toFixed(2)} x {item.quantity}
+                </Text>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      )}
 
       <View style={styles.inputContainer}>
         <Text style={styles.inputLabel}>Amount Received</Text>
@@ -224,16 +268,71 @@ const styles = StyleSheet.create({
   },
   totalContainer: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 20,
   },
   tabletTotalContainer: {
-    marginBottom: 40,
+    marginBottom: 30,
     padding: 20,
   },
   totalText: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#1f2937',
+  },
+  itemsSection: {
+    marginBottom: 20,
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    padding: 12,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 10,
+  },
+  itemsList: {
+    maxHeight: 200,
+  },
+  cartItem: {
+    backgroundColor: '#ffffff',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  itemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  itemName: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    flex: 1,
+  },
+  itemTotal: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#2563eb',
+  },
+  optionsContainer: {
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  optionText: {
+    fontSize: 11,
+    color: '#7c3aed',
+    fontStyle: 'italic',
+    marginLeft: 8,
+  },
+  itemQuantity: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginTop: 4,
   },
   inputContainer: {
     marginBottom: 24,

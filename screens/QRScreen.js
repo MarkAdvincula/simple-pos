@@ -8,6 +8,7 @@ import {
   Dimensions,
   Alert,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -25,6 +26,19 @@ const QRScreen = ({ route, navigation }) => {
   const [isPrinting, setIsPrinting] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const isPhone = screenData.width < 768;
+
+  // Helper function to calculate item total with options
+  const calculateItemTotal = (item) => {
+    let total = item.price;
+    if (item.selectedOptions) {
+      Object.values(item.selectedOptions).forEach(choices => {
+        choices.forEach(choice => {
+          total += choice.price;
+        });
+      });
+    }
+    return total * item.quantity;
+  };
 
   useEffect( () => {
     loadQRImages();
@@ -127,69 +141,110 @@ const QRScreen = ({ route, navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-      <TouchableOpacity
-          style={styles.backButton}
-          onPress={configureQR}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.backButtonText}>Change QR Image</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>{`${method === 'Gcash' ? 'Gcash' : 'BPI'} Payment`}</Text>
-        
-        <View style={dynamicStyles.qrContainer}>
-        {qrImage ? (
-  <Image source={{uri: qrImage}} style={dynamicStyles.qrImage} />
-) : (
-  <Ionicons name="qr-code-outline" size={300} color="#6b7280" />
-)}
-        </View>
-        
-        <Text style={styles.instruction}>Scan QR Code to Pay</Text>
-        <Text style={styles.totalAmount}>₱{total}</Text>
-        <TouchableOpacity
-                style={[
-                  styles.completeButton,
-                  (isProcessingPayment || isPrinting) && styles.buttonDisabled
-                ]}
-                onPress={() => confirmPayment(false)}
-                activeOpacity={0.8}
-                disabled={isProcessingPayment || isPrinting}
-              >
-                {isProcessingPayment || isPrinting ? (
-                  <ActivityIndicator size={24} color="#ffffff" />
-                ) : (
-                  <Ionicons name="cash" size={24} color="#ffffff" />
-                )}
-                <Text style={styles.completeButtonText}>
-                  {isPrinting ? 'Printing...' : isProcessingPayment ? 'Processing...' : 'Complete Payment'}
-                </Text>
-              </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.cameraButton,
-            (isProcessingPayment || isPrinting) && styles.buttonDisabled
-          ]}
-          onPress={() => confirmPayment(true)}
-          activeOpacity={0.8}
-          disabled={isProcessingPayment || isPrinting}
-        >
-          {isProcessingPayment || isPrinting ? (
-            <ActivityIndicator size={24} color="#ffffff" />
-          ) : (
-            <Ionicons name="camera" size={24} color="#ffffff" />
+      <View style={styles.mainLayout}>
+        {/* Left Side - Content */}
+        <View style={styles.leftColumn}>
+          <TouchableOpacity
+            style={styles.changeQRButton}
+            onPress={configureQR}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.changeQRButtonText}>Change QR Image</Text>
+          </TouchableOpacity>
+          <Text style={styles.title}>{`${method === 'Gcash' ? 'Gcash' : 'BPI'} Payment`}</Text>
+
+          {/* Items List - 2 Columns */}
+          {cart && cart.length > 0 && (
+            <View style={styles.itemsSection}>
+              <Text style={styles.sectionTitle}>Items to Purchase</Text>
+              <ScrollView style={styles.itemsScrollView} nestedScrollEnabled={true}>
+                <View style={styles.itemsGrid}>
+                  {cart.map((item, index) => (
+                    <View key={index} style={styles.cartItem}>
+                      <View style={styles.itemHeader}>
+                        <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+                        <Text style={styles.itemTotal}>₱{calculateItemTotal(item).toFixed(2)}</Text>
+                      </View>
+
+                      {item.selectedOptions && Object.keys(item.selectedOptions).length > 0 && (
+                        <View style={styles.optionsContainer}>
+                          {Object.entries(item.selectedOptions).map(([groupName, choices], idx) => (
+                            <Text key={idx} style={styles.optionText} numberOfLines={2}>
+                              • {choices.map(c => `${c.name}${c.price > 0 ? ` (+₱${c.price.toFixed(2)})` : ''}`).join(', ')}
+                            </Text>
+                          ))}
+                        </View>
+                      )}
+
+                      <Text style={styles.itemQuantity}>
+                        ₱{item.price.toFixed(2)} x {item.quantity}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
           )}
-          <Text style={styles.cameraButtonText}>
-            {isPrinting ? 'Printing...' : isProcessingPayment ? 'Processing...' : 'Take Receipt Photos'}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.backButtonText}>Back</Text>
-        </TouchableOpacity>
+
+          <View style={dynamicStyles.qrContainer}>
+            {qrImage ? (
+              <Image source={{uri: qrImage}} style={dynamicStyles.qrImage} />
+            ) : (
+              <Ionicons name="qr-code-outline" size={250} color="#6b7280" />
+            )}
+          </View>
+
+          <Text style={styles.instruction}>Scan QR Code to Pay</Text>
+          <Text style={styles.totalAmount}>₱{total}</Text>
+        </View>
+
+        {/* Right Side - Buttons */}
+        <View style={styles.rightColumn}>
+          <TouchableOpacity
+            style={[
+              styles.completeButton,
+              (isProcessingPayment || isPrinting) && styles.buttonDisabled
+            ]}
+            onPress={() => confirmPayment(false)}
+            activeOpacity={0.8}
+            disabled={isProcessingPayment || isPrinting}
+          >
+            {isProcessingPayment || isPrinting ? (
+              <ActivityIndicator size={32} color="#ffffff" />
+            ) : (
+              <Ionicons name="cash" size={32} color="#ffffff" />
+            )}
+            <Text style={styles.completeButtonText}>
+              {isPrinting ? 'Printing...' : isProcessingPayment ? 'Processing...' : 'Complete Payment'}
+            </Text>
+          </TouchableOpacity>
+
+          <View style={styles.secondaryButtonsRow}>
+            <TouchableOpacity
+              style={[
+                styles.cameraIconButton,
+                (isProcessingPayment || isPrinting) && styles.buttonDisabled
+              ]}
+              onPress={() => confirmPayment(true)}
+              activeOpacity={0.8}
+              disabled={isProcessingPayment || isPrinting}
+            >
+              {isProcessingPayment || isPrinting ? (
+                <ActivityIndicator size={20} color="#ffffff" />
+              ) : (
+                <Ionicons name="camera" size={20} color="#ffffff" />
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => navigation.goBack()}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.backButtonText}>Back</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -217,71 +272,163 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#ffffff',
   },
-  content: {
+  mainLayout: {
+    flex: 1,
+    flexDirection: 'row',
+    padding: 16,
+  },
+  leftColumn: {
     flex: 1,
     alignItems: 'center',
+    paddingRight: 16,
+  },
+  rightColumn: {
+    width: 250,
     justifyContent: 'center',
-    padding: 16,
+    gap: 16,
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 32,
+    marginBottom: 20,
     color: '#1f2937',
+    textAlign: 'center',
+  },
+  changeQRButton: {
+    backgroundColor: '#6b7280',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+    marginBottom: 16,
+    alignSelf: 'flex-start',
+  },
+  changeQRButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  itemsSection: {
+    width: '100%',
+    maxWidth: 600,
+    marginBottom: 20,
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    padding: 16,
+    maxHeight: 250,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 10,
+  },
+  itemsScrollView: {
+    maxHeight: 200,
+  },
+  itemsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  cartItem: {
+    backgroundColor: '#ffffff',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    width: '48%',
+    marginBottom: 8,
+  },
+  itemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  itemName: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    flex: 1,
+  },
+  itemTotal: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#2563eb',
+  },
+  optionsContainer: {
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  optionText: {
+    fontSize: 12,
+    color: '#7c3aed',
+    fontStyle: 'italic',
+    marginLeft: 8,
+  },
+  itemQuantity: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 4,
   },
   
 
   instruction: {
-    fontSize: 18,
+    fontSize: 16,
     marginBottom: 8,
+    marginTop: 16,
     color: '#1f2937',
+    textAlign: 'center',
   },
   totalAmount: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 32,
-  },
-  cameraButton: {
-    backgroundColor: '#2563eb',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderRadius: 8,
+    color: '#2563eb',
     marginBottom: 16,
-  },
-  cameraButtonText: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginLeft: 8,
-  },
-  backButton: {
-    backgroundColor: '#6b7280',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  backButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: 'bold',
+    textAlign: 'center',
   },
   completeButton: {
     backgroundColor: '#16a34a',
-    padding: 16,
-    borderRadius: 8,
+    flexDirection: 'column',
     alignItems: 'center',
-    marginBottom: 20,
-    display: 'flex',
-    flexDirection: 'row',
-    gap: 10
-    
+    justifyContent: 'center',
+    paddingVertical: 32,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    gap: 12,
+    minHeight: 140,
   },
   completeButtonText: {
     color: '#ffffff',
     fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  secondaryButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+  },
+  cameraIconButton: {
+    backgroundColor: '#2563eb',
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backButton: {
+    backgroundColor: '#6b7280',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    flex: 1,
+  },
+  backButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
     fontWeight: 'bold',
   },
   buttonDisabled: {

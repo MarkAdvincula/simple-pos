@@ -206,6 +206,7 @@ const PaymentScreen = ({ route, navigation }) => {
       <SafeAreaView style={styles.container}>
         <PaymentCash
           total={total}
+          cart={cart}
           onBack={() => setShowCashKeypad(false)}
           onComplete={handleCashPayment}
           isPrinting={isPrinting}
@@ -214,6 +215,7 @@ const PaymentScreen = ({ route, navigation }) => {
         <PaymentModal
           visible={showPaymentModal}
           paymentDetails={paymentDetails}
+          cart={cart}
           isPrinting={isPrinting}
           connectedPrinter={connectedPrinter}
           onClose={handleModalClose}
@@ -316,6 +318,7 @@ const PaymentScreen = ({ route, navigation }) => {
       <PaymentModal
         visible={showPaymentModal}
         paymentDetails={paymentDetails}
+        cart={cart}
         isPrinting={isPrinting}
         connectedPrinter={connectedPrinter}
         onClose={handleModalClose}

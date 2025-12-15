@@ -23,6 +23,13 @@ const MenuScreen = ({ navigation, route }) => {
   const [queueCount, setQueueCount] = useState(0);
   const [showQueueModal, setShowQueueModal] = useState(false);
   const [queueName, setQueueName] = useState('');
+
+  // Option groups states
+  const [showOptionsModal, setShowOptionsModal] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [itemOptionGroups, setItemOptionGroups] = useState([]);
+  const [selectedOptions, setSelectedOptions] = useState({});
+
   const screenDataRef = useRef(Dimensions.get('window'));
   const {isPhone, isSmallPhone,isLargeTablet} = useScreen();
 
@@ -56,6 +63,7 @@ const MenuScreen = ({ navigation, route }) => {
       const transformedMenu = {};
       categoriesData.forEach(category => {
         transformedMenu[category.category_name] = category.items.map(item => ({
+          id: item.id,
           name: item.item_name,
           price: item.price
         }));
@@ -114,30 +122,161 @@ const MenuScreen = ({ navigation, route }) => {
 
 
 
-  const addToCart = useCallback((item) => {
+  const handleItemPress = async (item) => {
+    try {
+      // Check if item has option groups
+      const optionGroups = await databaseService.getItemOptionGroups(item.id);
+
+      if (optionGroups && optionGroups.length > 0) {
+        // Item has option groups, show selection modal
+        setSelectedItem(item);
+        setItemOptionGroups(optionGroups);
+        setSelectedOptions({});
+        setShowOptionsModal(true);
+      } else {
+        // No option groups, add directly to cart
+        addToCart(item);
+      }
+    } catch (error) {
+      console.error('Error checking option groups:', error);
+      // On error, just add to cart directly
+      addToCart(item);
+    }
+  };
+
+  const addToCart = useCallback((item, options = null) => {
     setCart(prevCart => {
-      const existingItem = prevCart.find(cartItem => cartItem.name === item.name);
+      const cartItem = options
+        ? { ...item, quantity: 1, selectedOptions: options }
+        : { ...item, quantity: 1 };
+
+      // If item has options, treat each combination as unique
+      if (options) {
+        return [...prevCart, cartItem];
+      }
+
+      // For items without options, check for existing and increment
+      const existingItem = prevCart.find(cartItem =>
+        cartItem.name === item.name && !cartItem.selectedOptions
+      );
+
       if (existingItem) {
         return prevCart.map(cartItem =>
-          cartItem.name === item.name
+          cartItem.name === item.name && !cartItem.selectedOptions
             ? { ...cartItem, quantity: cartItem.quantity + 1 }
             : cartItem
         );
       } else {
-        return [...prevCart, { ...item, quantity: 1 }];
+        return [...prevCart, cartItem];
       }
     });
   }, []);
 
-  const removeFromCart = useCallback((itemName) => {
-    setCart(prevCart => prevCart.filter(item => item.name !== itemName));
+  const removeFromCart = useCallback((index) => {
+    setCart(prevCart => prevCart.filter((_, i) => i !== index));
   }, []);
 
   const clearCart = useCallback(() => setCart([]), []);
 
   const getTotalPrice = useMemo(() => {
-    return cart.reduce((total, item) => total + (item.price * item.quantity), 0);
+    return cart.reduce((total, item) => {
+      let itemTotal = item.price;
+
+      // Add option prices if they exist
+      if (item.selectedOptions) {
+        Object.values(item.selectedOptions).forEach(choices => {
+          choices.forEach(choice => {
+            itemTotal += choice.price;
+          });
+        });
+      }
+
+      return total + (itemTotal * item.quantity);
+    }, 0);
   }, [cart]);
+
+  // Handle option choice selection
+  const toggleOptionChoice = (groupId, choiceId, selectionType) => {
+    setSelectedOptions(prev => {
+      const newSelections = { ...prev };
+
+      if (selectionType === 'single') {
+        // For single select, replace the selection
+        newSelections[groupId] = [choiceId];
+      } else {
+        // For multiple select, toggle the choice
+        const currentSelections = newSelections[groupId] || [];
+        if (currentSelections.includes(choiceId)) {
+          newSelections[groupId] = currentSelections.filter(id => id !== choiceId);
+        } else {
+          newSelections[groupId] = [...currentSelections, choiceId];
+        }
+      }
+
+      return newSelections;
+    });
+  };
+
+  // Calculate total price with selected options
+  const calculateTotalWithOptions = () => {
+    if (!selectedItem) return 0;
+
+    let total = selectedItem.price;
+
+    // Add prices from selected options
+    itemOptionGroups.forEach(group => {
+      const selectedChoiceIds = selectedOptions[group.id] || [];
+      selectedChoiceIds.forEach(choiceId => {
+        const choice = group.choices.find(c => c.id === choiceId);
+        if (choice && choice.price) {
+          total += choice.price;
+        }
+      });
+    });
+
+    return total;
+  };
+
+  // Confirm and add to cart with options
+  const confirmAddToCart = () => {
+    // Validate required option groups
+    const missingRequired = itemOptionGroups.filter(group => {
+      return group.is_required === 1 && (!selectedOptions[group.id] || selectedOptions[group.id].length === 0);
+    });
+
+    if (missingRequired.length > 0) {
+      Alert.alert(
+        'Required Options',
+        `Please select options for: ${missingRequired.map(g => g.name).join(', ')}`
+      );
+      return;
+    }
+
+    // Build options object with choice details
+    const optionsWithDetails = {};
+    itemOptionGroups.forEach(group => {
+      const selectedChoiceIds = selectedOptions[group.id] || [];
+      if (selectedChoiceIds.length > 0) {
+        optionsWithDetails[group.name] = selectedChoiceIds.map(choiceId => {
+          const choice = group.choices.find(c => c.id === choiceId);
+          return {
+            id: choice.id,
+            name: choice.choice_name,
+            price: choice.price || 0
+          };
+        });
+      }
+    });
+
+    // Add to cart with options
+    addToCart(selectedItem, optionsWithDetails);
+
+    // Close modal and reset
+    setShowOptionsModal(false);
+    setSelectedItem(null);
+    setItemOptionGroups([]);
+    setSelectedOptions({});
+  };
 
   const handleProceedToPayment = useCallback(() => {
     navigation.navigate('Payment', { cart, total: getTotalPrice });
@@ -363,7 +502,7 @@ const MenuScreen = ({ navigation, route }) => {
                     <TouchableOpacity
                       key={`${category}-${index}`}
                       style={dynamicStyles.menuItem}
-                      onPress={() => addToCart(item)}
+                      onPress={() => handleItemPress(item)}
                       activeOpacity={0.7}
                     >
                       <Text style={dynamicStyles.itemName}>{item.name}</Text>
@@ -403,25 +542,47 @@ const MenuScreen = ({ navigation, route }) => {
               {cart.length === 0 ? (
                 <Text style={styles.emptyCart}>No items in cart</Text>
               ) : (
-                cart.map((item, index) => (
-                  <View key={`cart-${index}`} style={styles.cartItem}>
-                    <View style={styles.cartItemDetails}>
-                      <Text style={styles.cartItemName}>{item.name}</Text>
-                      <Text style={styles.cartItemQuantity}>
-                        ₱{item.price} x {item.quantity}
-                      </Text>
+                cart.map((item, index) => {
+                  // Calculate item total including option prices
+                  let itemTotal = item.price;
+                  if (item.selectedOptions) {
+                    Object.values(item.selectedOptions).forEach(choices => {
+                      choices.forEach(choice => {
+                        itemTotal += choice.price;
+                      });
+                    });
+                  }
+                  itemTotal *= item.quantity;
+
+                  return (
+                    <View key={`cart-${index}`} style={styles.cartItem}>
+                      <View style={styles.cartItemDetails}>
+                        <Text style={styles.cartItemName}>{item.name}</Text>
+                        {item.selectedOptions && Object.keys(item.selectedOptions).length > 0 && (
+                          <View style={styles.optionsContainer}>
+                            {Object.entries(item.selectedOptions).map(([groupName, choices], idx) => (
+                              <Text key={idx} style={styles.optionText}>
+                                • {choices.map(c => c.name).join(', ')}
+                              </Text>
+                            ))}
+                          </View>
+                        )}
+                        <Text style={styles.cartItemQuantity}>
+                          ₱{item.price}{item.selectedOptions ? ` (+₱${(itemTotal / item.quantity - item.price).toFixed(2)})` : ''} x {item.quantity}
+                        </Text>
+                      </View>
+                      <View style={styles.cartItemRight}>
+                        <Text style={styles.cartItemTotal}>₱{itemTotal.toFixed(2)}</Text>
+                        <TouchableOpacity
+                          onPress={() => removeFromCart(index)}
+                          style={styles.removeButton}
+                        >
+                          <Ionicons name="close" size={20} color="#ef4444" />
+                        </TouchableOpacity>
+                      </View>
                     </View>
-                    <View style={styles.cartItemRight}>
-                      <Text style={styles.cartItemTotal}>₱{item.price * item.quantity}</Text>
-                      <TouchableOpacity
-                        onPress={() => removeFromCart(item.name)}
-                        style={styles.removeButton}
-                      >
-                        <Ionicons name="close" size={20} color="#ef4444" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))
+                  );
+                })
               )}
             </ScrollView>
 
@@ -499,6 +660,112 @@ const MenuScreen = ({ navigation, route }) => {
                 onPress={saveQueue}
               >
                 <Text style={styles.modalButtonTextSave}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Options Selection Modal */}
+      <Modal
+        visible={showOptionsModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => {
+          setShowOptionsModal(false);
+          setSelectedItem(null);
+          setItemOptionGroups([]);
+          setSelectedOptions({});
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.optionsModalContent}>
+            {/* Header */}
+            <View style={styles.optionsModalHeader}>
+              <View>
+                <Text style={styles.optionsModalTitle}>
+                  {selectedItem?.name}
+                </Text>
+                <Text style={styles.optionsModalBasePrice}>
+                  Base Price: ₱{selectedItem?.price.toFixed(2)}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowOptionsModal(false);
+                  setSelectedItem(null);
+                  setItemOptionGroups([]);
+                  setSelectedOptions({});
+                }}
+              >
+                <Ionicons name="close" size={24} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Option Groups */}
+            <ScrollView style={styles.optionsScrollView} showsVerticalScrollIndicator={false}>
+              {itemOptionGroups.map((group) => (
+                <View key={group.id} style={styles.optionGroup}>
+                  <View style={styles.optionGroupHeader}>
+                    <Text style={styles.optionGroupName}>{group.name}</Text>
+                    {group.is_required === 1 && (
+                      <View style={styles.requiredBadge}>
+                        <Text style={styles.requiredText}>Required</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.optionGroupSubtext}>
+                    {group.selection_type === 'single' ? 'Choose one' : 'Choose multiple'}
+                  </Text>
+
+                  {/* Choices */}
+                  {group.choices.map((choice) => {
+                    const isSelected = (selectedOptions[group.id] || []).includes(choice.id);
+                    return (
+                      <TouchableOpacity
+                        key={choice.id}
+                        style={styles.choiceItem}
+                        onPress={() => toggleOptionChoice(group.id, choice.id, group.selection_type)}
+                      >
+                        <View style={styles.choiceLeft}>
+                          {group.selection_type === 'single' ? (
+                            <View style={[styles.radio, isSelected && styles.radioSelected]}>
+                              {isSelected && <View style={styles.radioInner} />}
+                            </View>
+                          ) : (
+                            <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                              {isSelected && (
+                                <Ionicons name="checkmark" size={16} color="#ffffff" />
+                              )}
+                            </View>
+                          )}
+                          <Text style={styles.choiceName}>{choice.choice_name}</Text>
+                        </View>
+                        {choice.price > 0 && (
+                          <Text style={styles.choicePrice}>
+                            +₱{choice.price.toFixed(2)}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ))}
+            </ScrollView>
+
+            {/* Footer */}
+            <View style={styles.optionsModalFooter}>
+              <View style={styles.optionsTotalContainer}>
+                <Text style={styles.optionsTotalLabel}>Total:</Text>
+                <Text style={styles.optionsTotalAmount}>
+                  ₱{calculateTotalWithOptions().toFixed(2)}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.addToCartButton}
+                onPress={confirmAddToCart}
+              >
+                <Text style={styles.addToCartButtonText}>Add to Cart</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -609,6 +876,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     color: '#1f2937',
+  },
+  optionsContainer: {
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  optionText: {
+    fontSize: 11,
+    color: '#7c3aed',
+    fontStyle: 'italic',
   },
   cartItemQuantity: {
     fontSize: 12,
@@ -736,6 +1012,172 @@ const styles = StyleSheet.create({
   modalButtonTextSave: {
     color: '#ffffff',
     fontSize: 16,
+    fontWeight: 'bold',
+  },
+  // Options Modal Styles
+  optionsModalContent: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    width: '95%',
+    maxWidth: 600,
+    height: '85%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  optionsModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    padding: 24,
+    borderBottomWidth: 2,
+    borderBottomColor: '#e5e7eb',
+    backgroundColor: '#f9fafb',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+  },
+  optionsModalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 6,
+  },
+  optionsModalBasePrice: {
+    fontSize: 16,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  optionsScrollView: {
+    flex: 1,
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+  },
+  optionGroup: {
+    marginBottom: 28,
+  },
+  optionGroupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  optionGroupName: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginRight: 10,
+  },
+  requiredBadge: {
+    backgroundColor: '#fee2e2',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  requiredText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#dc2626',
+  },
+  optionGroupSubtext: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 14,
+    fontWeight: '500',
+  },
+  choiceItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    backgroundColor: '#f9fafb',
+    borderRadius: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  choiceLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  radio: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#d1d5db',
+    marginRight: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  radioSelected: {
+    borderColor: '#2563eb',
+    borderWidth: 2,
+  },
+  radioInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#2563eb',
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#d1d5db',
+    marginRight: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxSelected: {
+    backgroundColor: '#2563eb',
+    borderColor: '#2563eb',
+  },
+  choiceName: {
+    fontSize: 16,
+    color: '#1f2937',
+    flex: 1,
+    fontWeight: '500',
+  },
+  choicePrice: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#2563eb',
+  },
+  optionsModalFooter: {
+    borderTopWidth: 2,
+    borderTopColor: '#e5e7eb',
+    padding: 24,
+    backgroundColor: '#ffffff',
+  },
+  optionsTotalContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  optionsTotalLabel: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1f2937',
+  },
+  optionsTotalAmount: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: '#2563eb',
+  },
+  addToCartButton: {
+    backgroundColor: '#2563eb',
+    padding: 18,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  addToCartButtonText: {
+    color: '#ffffff',
+    fontSize: 18,
     fontWeight: 'bold',
   },
 });
