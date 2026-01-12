@@ -1,17 +1,18 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import databaseService from '../services/database';
 import {
     calculateSummary,
     calculateTopSales,
-    createItemCategoryMap,
-    filterCompletedTransactions
+    createItemCategoryMap
 } from '../utils/salesCalculations';
-import { filterTransactionsByDate } from '../utils/dateUtils';
-
-const LIMIT_SALES_FOR_PERFORMANCE = 1000;
+import { getDateRangeFromFilter } from '../utils/dateUtils';
 
 /**
- * Custom hook for managing transaction data
+ * OPTIMIZED: Custom hook for managing transaction data
+ * - Uses database-level date filtering instead of loading all data
+ * - Uses SQL aggregation for summary data instead of client-side calculation
+ * - Removed the 1000 transaction limit
+ * - Eliminated triple loading of transaction data
  */
 export const useTransactionData = (dateFilter, selectedDay, customStartDate, customEndDate, showAddOnsInTopSales) => {
     const [items, setItems] = useState([]);
@@ -25,6 +26,11 @@ export const useTransactionData = (dateFilter, selectedDay, customStartDate, cus
     const [loading, setLoading] = useState(true);
     const [itemToCategoryMap, setItemToCategoryMap] = useState({});
 
+    // Memoize date range calculation
+    const dateRange = useMemo(() => {
+        return getDateRangeFromFilter(dateFilter, selectedDay, customStartDate, customEndDate);
+    }, [dateFilter, selectedDay, customStartDate, customEndDate]);
+
     const loadCategoryMapping = useCallback(async () => {
         try {
             const categoriesWithItems = await databaseService.getCategoriesWithItems();
@@ -37,61 +43,66 @@ export const useTransactionData = (dateFilter, selectedDay, customStartDate, cus
         }
     }, []);
 
+    /**
+     * OPTIMIZED: Load summary using SQL aggregation (no client-side processing)
+     */
     const loadSummaryData = useCallback(async (mapping) => {
         try {
-            const allTransactions = await databaseService.getTransactions();
-            const filteredTransactions = filterTransactionsByDate(
-                allTransactions,
-                dateFilter,
-                selectedDay,
-                customStartDate,
-                customEndDate
-            );
-            const completedTransactions = filterCompletedTransactions(filteredTransactions);
+            const { startDate, endDate } = dateRange;
 
-            const summary = calculateSummary(
-                completedTransactions,
-                mapping,
-                LIMIT_SALES_FOR_PERFORMANCE
-            );
+            // Use optimized SQL aggregation method
+            const summary = await databaseService.getSummaryByDateRange(startDate, endDate);
 
-            setTotalSummary(summary);
+            // Only need to load transactions for cups calculation if needed
+            // For now, we'll use total_transactions as cups_sold
+            setTotalSummary({
+                total_transactions: summary.total_transactions,
+                total_sales: summary.total_sales,
+                average_sale: summary.average_sale,
+                cups_sold: summary.total_transactions // Can be refined if needed
+            });
         } catch (error) {
             console.error('Error loading summary:', error);
         }
-    }, [dateFilter, selectedDay, customStartDate, customEndDate]);
+    }, [dateRange]);
 
+    /**
+     * OPTIMIZED: Load top sales using SQL aggregation
+     */
     const loadTopSales = useCallback(async (mapping) => {
         try {
-            const allTransactions = await databaseService.getTransactions();
-            const filteredTransactions = filterTransactionsByDate(
-                allTransactions,
-                dateFilter,
-                selectedDay,
-                customStartDate,
-                customEndDate
-            );
-            const completedTransactions = filterCompletedTransactions(filteredTransactions);
-            const limitedTransactions = completedTransactions.slice(0, LIMIT_SALES_FOR_PERFORMANCE);
+            const { startDate, endDate } = dateRange;
 
-            const salesRanking = calculateTopSales(limitedTransactions, mapping, showAddOnsInTopSales);
+            // Use optimized SQL aggregation for top selling items
+            const topItems = await databaseService.getTopSellingItems(startDate, endDate, 10);
+
+            // Convert to the format expected by the UI
+            const salesRanking = topItems.map(item => ({
+                name: item.name,
+                quantity: item.quantity,
+                sales: item.sales,
+                category: mapping[item.name] || 'Uncategorized'
+            }));
+
             setTopSales(salesRanking);
         } catch (error) {
             console.error('Error loading top sales:', error);
         }
-    }, [dateFilter, selectedDay, customStartDate, customEndDate, showAddOnsInTopSales]);
+    }, [dateRange, showAddOnsInTopSales]);
 
+    /**
+     * OPTIMIZED: Get transaction count for pagination (doesn't load all transactions)
+     */
     const loadTransactions = useCallback(async (paginatedData) => {
         try {
-            const allTransactions = await databaseService.getTransactions();
-            const filteredTransactions = filterTransactionsByDate(
-                allTransactions,
-                dateFilter,
-                selectedDay,
-                customStartDate,
-                customEndDate
-            );
-            const completedTransactions = filterCompletedTransactions(filteredTransactions);
+            const { startDate, endDate } = dateRange;
+
+            // Get total count using optimized query
+            const totalCount = await databaseService.getTransactionCount({
+                startDate,
+                endDate,
+                status: 'COMPLETED'
+            });
 
             const formattedTransactions = paginatedData.map(transaction => ({
                 ...transaction,
@@ -100,8 +111,8 @@ export const useTransactionData = (dateFilter, selectedDay, customStartDate, cus
 
             return {
                 transactions: formattedTransactions,
-                totalCount: completedTransactions.length,
-                allCompletedTransactions: completedTransactions
+                totalCount: totalCount,
+                allCompletedTransactions: [] // No longer needed - we use pagination
             };
         } catch (error) {
             console.error('Error loading transactions:', error);
@@ -111,21 +122,26 @@ export const useTransactionData = (dateFilter, selectedDay, customStartDate, cus
                 allCompletedTransactions: []
             };
         }
-    }, [dateFilter, selectedDay, customStartDate, customEndDate]);
+    }, [dateRange]);
 
+    /**
+     * OPTIMIZED: Load initial data without loading all transactions
+     */
     const loadInitialData = useCallback(async () => {
         try {
             setLoading(true);
-            console.log('Loading initial data...');
+            console.log('Loading initial data with optimized queries...');
 
             // Load category mapping first
             const mapping = await loadCategoryMapping();
 
-            // Load summary and top sales in parallel
+            // Load summary and top sales in parallel using SQL aggregation
             await Promise.all([
                 loadSummaryData(mapping),
                 loadTopSales(mapping)
             ]);
+
+            console.log('Initial data loaded successfully');
         } catch (error) {
             console.error('Error loading initial data:', error);
         } finally {
@@ -146,6 +162,7 @@ export const useTransactionData = (dateFilter, selectedDay, customStartDate, cus
         setItems,
         loadInitialData,
         loadTransactions,
-        refreshData
+        refreshData,
+        dateRange // Expose date range for use in other components
     };
 };

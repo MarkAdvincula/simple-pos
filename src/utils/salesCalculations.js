@@ -4,23 +4,22 @@
 
 /**
  * Calculate summary statistics from transactions
+ * OPTIMIZED: Removed transaction limit - now processes all transactions efficiently
+ * Note: Consider using database-level aggregation for better performance with large datasets
  * @param {Array} transactions - Array of completed transactions
  * @param {object} itemToCategoryMap - Mapping of item names to categories
- * @param {number} limit - Maximum number of transactions to process
  * @returns {object} Summary object with total_transactions, total_sales, average_sale, cups_sold
  */
-export const calculateSummary = (transactions, itemToCategoryMap, limit = 1000) => {
-    const limitedTransactions = transactions.slice(0, limit);
-
-    const totalSales = limitedTransactions.reduce((sum, transaction) =>
+export const calculateSummary = (transactions, itemToCategoryMap) => {
+    const totalSales = transactions.reduce((sum, transaction) =>
         sum + parseFloat(transaction.total_amount), 0
     );
-    const averageSale = limitedTransactions.length > 0 ?
-        totalSales / limitedTransactions.length : 0;
+    const averageSale = transactions.length > 0 ?
+        totalSales / transactions.length : 0;
 
     // Calculate cups sold (excluding add-ons)
     let cupsSold = 0;
-    limitedTransactions.forEach(transaction => {
+    transactions.forEach(transaction => {
         if (transaction.items && transaction.items.length > 0) {
             transaction.items.forEach(item => {
                 const categoryName = itemToCategoryMap[item.item_name];
@@ -33,7 +32,7 @@ export const calculateSummary = (transactions, itemToCategoryMap, limit = 1000) 
     });
 
     return {
-        total_transactions: limitedTransactions.length,
+        total_transactions: transactions.length,
         total_sales: totalSales,
         average_sale: averageSale,
         cups_sold: cupsSold

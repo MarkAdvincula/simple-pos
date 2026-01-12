@@ -99,3 +99,53 @@ export const getFilterDisplayText = (dateFilter, selectedDay, customStartDate, c
             return 'All Time';
     }
 };
+
+/**
+ * Convert Date to SQL datetime format (YYYY-MM-DD HH:MM:SS)
+ * @param {Date} date - Date to convert
+ * @returns {string} SQL formatted datetime string
+ */
+export const toSQLDateTime = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+};
+
+/**
+ * Get date range in SQL format for database queries
+ * OPTIMIZED for direct use with database queries
+ * @param {string} dateFilter - Filter type ('all', 'today', 'day', 'week', 'month', 'custom')
+ * @param {Date} selectedDay - Selected day for 'day' filter
+ * @param {Date} customStartDate - Custom start date for 'custom' filter
+ * @param {Date} customEndDate - Custom end date for 'custom' filter
+ * @returns {object} Object with startDate and endDate in SQL format
+ */
+export const getDateRangeFromFilter = (dateFilter, selectedDay, customStartDate, customEndDate) => {
+    // For 'all' filter, use a very wide date range
+    if (dateFilter === 'all') {
+        return {
+            startDate: '2000-01-01 00:00:00',
+            endDate: '2099-12-31 23:59:59'
+        };
+    }
+
+    const dateRange = getDateRange(dateFilter, selectedDay, customStartDate, customEndDate);
+
+    if (!dateRange) {
+        // Default to wide range
+        return {
+            startDate: '2000-01-01 00:00:00',
+            endDate: '2099-12-31 23:59:59'
+        };
+    }
+
+    return {
+        startDate: toSQLDateTime(dateRange.startDate),
+        endDate: toSQLDateTime(dateRange.endDate)
+    };
+};
