@@ -783,6 +783,12 @@ class DatabaseService {
             if (startDate && endDate) {
                 whereConditions.push('t.transaction_datetime BETWEEN ? AND ?');
                 params.push(startDate, endDate);
+                // Debug logging
+                console.log('🔍 Date filter applied:', {
+                    startDate,
+                    endDate,
+                    filter: options.filterName || 'unknown'
+                });
             }
 
             if (status) {
@@ -803,7 +809,17 @@ class DatabaseService {
                 LIMIT ? OFFSET ?
             `, [...params, limit, offset]);
 
+            console.log(`📊 Found ${transactionIds.length} transactions for current page`);
+
             if (transactionIds.length === 0) {
+                // Debug: Show a sample transaction to verify date format
+                const sampleTxn = await this.db.getFirstAsync(`
+                    SELECT transaction_datetime FROM transactions_tbl
+                    ORDER BY transaction_datetime DESC LIMIT 1
+                `);
+                if (sampleTxn) {
+                    console.log('📅 Sample transaction datetime:', sampleTxn.transaction_datetime);
+                }
                 return [];
             }
 

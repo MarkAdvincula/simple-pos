@@ -101,19 +101,15 @@ export const getFilterDisplayText = (dateFilter, selectedDay, customStartDate, c
 };
 
 /**
- * Convert Date to SQL datetime format (YYYY-MM-DD HH:MM:SS)
+ * Convert Date to ISO datetime format (YYYY-MM-DDTHH:MM:SS.mmmZ)
+ * FIX: Use ISO format to match how transactions are stored in database
  * @param {Date} date - Date to convert
- * @returns {string} SQL formatted datetime string
+ * @returns {string} ISO formatted datetime string
  */
 export const toSQLDateTime = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    const seconds = String(date.getSeconds()).padStart(2, '0');
-
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    // Use ISO format since transactions are stored with toISOString()
+    // This ensures proper comparison in SQLite BETWEEN clauses
+    return date.toISOString();
 };
 
 /**
@@ -126,11 +122,11 @@ export const toSQLDateTime = (date) => {
  * @returns {object} Object with startDate and endDate in SQL format
  */
 export const getDateRangeFromFilter = (dateFilter, selectedDay, customStartDate, customEndDate) => {
-    // For 'all' filter, use a very wide date range
+    // For 'all' filter, use a very wide date range in ISO format
     if (dateFilter === 'all') {
         return {
-            startDate: '2000-01-01 00:00:00',
-            endDate: '2099-12-31 23:59:59'
+            startDate: '2000-01-01T00:00:00.000Z',
+            endDate: '2099-12-31T23:59:59.999Z'
         };
     }
 
@@ -139,8 +135,8 @@ export const getDateRangeFromFilter = (dateFilter, selectedDay, customStartDate,
     if (!dateRange) {
         // Default to wide range
         return {
-            startDate: '2000-01-01 00:00:00',
-            endDate: '2099-12-31 23:59:59'
+            startDate: '2000-01-01T00:00:00.000Z',
+            endDate: '2099-12-31T23:59:59.999Z'
         };
     }
 
