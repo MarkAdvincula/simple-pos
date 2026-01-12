@@ -24,11 +24,23 @@ class ExportService {
       const dateStr = date.toLocaleDateString();
       const timeStr = date.toLocaleTimeString();
 
-      // Format items as "ItemName (Qty x Price)"
+      // Format items as "ItemName (Qty x Price)" with options
       const itemsStr = transaction.items && transaction.items.length > 0
-        ? transaction.items.map(item =>
-            `"${item.item_name} (${item.quantity} x ₱${item.unit_price})"`
-          ).join('; ')
+        ? transaction.items.map(item => {
+            let itemStr = `${item.item_name}`;
+
+            // Add options if they exist
+            if (item.selectedOptions && Object.keys(item.selectedOptions).length > 0) {
+              const optionsStr = Object.values(item.selectedOptions)
+                .flat()
+                .map(choice => `${choice.name}${choice.price > 0 ? ` (+₱${choice.price})` : ''}`)
+                .join(', ');
+              itemStr += ` [${optionsStr}]`;
+            }
+
+            itemStr += ` (${item.quantity} x ₱${item.unit_price})`;
+            return `"${itemStr}"`;
+          }).join('; ')
         : 'No items';
 
       const row = [
@@ -102,9 +114,21 @@ class ExportService {
       const timeStr = date.toLocaleTimeString();
 
       const itemsStr = transaction.items && transaction.items.length > 0
-        ? transaction.items.map(item =>
-            `${item.item_name} (${item.quantity} x ₱${item.unit_price})`
-          ).join('; ')
+        ? transaction.items.map(item => {
+            let itemStr = `${item.item_name}`;
+
+            // Add options if they exist
+            if (item.selectedOptions && Object.keys(item.selectedOptions).length > 0) {
+              const optionsStr = Object.values(item.selectedOptions)
+                .flat()
+                .map(choice => `${choice.name}${choice.price > 0 ? ` (+₱${choice.price})` : ''}`)
+                .join(', ');
+              itemStr += ` [${optionsStr}]`;
+            }
+
+            itemStr += ` (${item.quantity} x ₱${item.unit_price})`;
+            return itemStr;
+          }).join('; ')
         : 'No items';
 
       transactionData.push([

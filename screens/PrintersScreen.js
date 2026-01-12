@@ -9,7 +9,9 @@ import {
   PermissionsAndroid,
   Linking,
   SafeAreaView,
+  ScrollView,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { BleManager } from 'react-native-ble-plx';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BluetoothClassic from 'react-native-bluetooth-classic';
@@ -477,116 +479,152 @@ const BluetoothPrinterManager = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Current Selected Printer */}
-      {selectedPrinter && (
-        <View style={styles.selectedPrinterContainer}>
-          <Text style={styles.selectedPrinterTitle}>Selected Printer:</Text>
-          <View style={styles.selectedPrinterInfo}>
-            <Text style={styles.selectedPrinterName}>{selectedPrinter.name}</Text>
-            <Text style={styles.selectedPrinterAddress}>{selectedPrinter.address}</Text>
-            <Text style={styles.selectedPrinterType}>Type: {selectedPrinter.type}</Text>
-          </View>
-          <View style={styles.printerActions}>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.testButton]}
-              onPress={testPrint}
-              disabled={isPrinting}
-            >
-              <Text style={styles.actionButtonText}>
-                {isPrinting ? 'Printing...' : 'Test Print'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.clearButton]}
-              onPress={clearStoredPrinter}
-            >
-              <Text style={styles.actionButtonText}>Clear</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
+      <View style={styles.mainLayout}>
+        {/* Left Column - Controls */}
+        <View style={styles.leftColumn}>
+          <Text style={styles.title}>Printer Settings</Text>
 
-      {/* Scan Button */}
-      <TouchableOpacity
-        style={[styles.button, { backgroundColor: getStatusColor() }]}
-        onPress={requestBluetoothPermissions}
-        disabled={isScanning}
-      >
-        <Text style={styles.buttonText}>
-          {isScanning ? 'Scanning for printers...' : 'Scan for BLE Printers'}
-        </Text>
-      </TouchableOpacity>
-
-      {/* Status */}
-      <View style={styles.statusContainer}>
-        <Text style={styles.statusLabel}>Status: </Text>
-        <Text style={[styles.statusText, { color: getStatusColor() }]}>
-          {getStatusText()}
-        </Text>
-      </View>
-
-      {/* Devices List */}
-      {devices.length > 0 && (
-        <View style={styles.devicesList}>
-          <Text style={styles.devicesTitle}>Found BLE Devices ({devices.length}):</Text>
-          {devices
-            .sort((a, b) => b.rssi - a.rssi)
-            .map((device, index) => (
-            <TouchableOpacity 
-              key={device.id} 
-              style={[
-                styles.deviceItem,
-                selectedPrinter?.address === device.id && styles.deviceItemSelected
-              ]}
-              onPress={() => saveSelectedPrinter(device)}
-            >
-              <View style={styles.deviceHeader}>
-                <Text style={styles.deviceName}>{device.displayName}</Text>
-                <Text style={styles.deviceRssi}>{device.rssi} dBm</Text>
+          {/* Current Selected Printer */}
+          {selectedPrinter && (
+            <View style={styles.selectedPrinterContainer}>
+              <Text style={styles.selectedPrinterTitle}>Selected Printer</Text>
+              <View style={styles.selectedPrinterInfo}>
+                <Text style={styles.selectedPrinterName}>{selectedPrinter.name}</Text>
+                <Text style={styles.selectedPrinterAddress}>{selectedPrinter.address}</Text>
+                <Text style={styles.selectedPrinterType}>Type: {selectedPrinter.type}</Text>
               </View>
-              <Text style={styles.deviceId}>{device.id}</Text>
-              {device.serviceUUIDs && device.serviceUUIDs.length > 0 && (
-                <Text style={styles.deviceServices}>
-                  Services: {device.serviceUUIDs.join(', ')}
-                </Text>
-              )}
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
+              <View style={styles.printerActions}>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.testButton]}
+                  onPress={testPrint}
+                  disabled={isPrinting}
+                >
+                  <Text style={styles.actionButtonText}>
+                    {isPrinting ? 'Printing...' : 'Test Print'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.clearButton]}
+                  onPress={clearStoredPrinter}
+                >
+                  <Text style={styles.actionButtonText}>Clear</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
 
-      {/* No Devices Message */}
-      {!isScanning && devices.length === 0 && permissionStatus === 'granted' && (
-        <View style={styles.noDevicesContainer}>
-          <Text style={styles.noDevicesText}>No BLE devices found</Text>
-          <Text style={styles.noDevicesHint}>
-            Make sure your printer is in pairing/discoverable mode and try again
-          </Text>
+          {/* Status Card */}
+          <View style={[styles.statusCard, { borderLeftColor: getStatusColor() }]}>
+            <View style={styles.statusHeader}>
+              <Ionicons name="bluetooth" size={20} color={getStatusColor()} />
+              <Text style={styles.statusTitle}>Bluetooth Status</Text>
+            </View>
+            <Text style={[styles.statusText, { color: getStatusColor() }]}>
+              {getStatusText()}
+            </Text>
+          </View>
+
+          {/* Scan Button */}
+          <TouchableOpacity
+            style={[styles.scanButton, { backgroundColor: getStatusColor() }]}
+            onPress={requestBluetoothPermissions}
+            disabled={isScanning}
+          >
+            <Ionicons name="scan" size={20} color="#ffffff" />
+            <Text style={styles.scanButtonText}>
+              {isScanning ? 'Scanning...' : 'Scan for Printers'}
+            </Text>
+          </TouchableOpacity>
         </View>
-      )}
+
+        {/* Right Column - Devices List */}
+        <View style={styles.rightColumn}>
+          <Text style={styles.devicesTitle}>
+            Available Devices {devices.length > 0 && `(${devices.length})`}
+          </Text>
+
+          <ScrollView style={styles.devicesListContainer}>
+            {devices.length > 0 ? (
+              devices
+                .sort((a, b) => b.rssi - a.rssi)
+                .map((device) => (
+                <TouchableOpacity
+                  key={device.id}
+                  style={[
+                    styles.deviceItem,
+                    selectedPrinter?.address === device.id && styles.deviceItemSelected
+                  ]}
+                  onPress={() => saveSelectedPrinter(device)}
+                >
+                  <View style={styles.deviceHeader}>
+                    <Text style={styles.deviceName}>{device.displayName}</Text>
+                    <Text style={styles.deviceRssi}>{device.rssi} dBm</Text>
+                  </View>
+                  <Text style={styles.deviceId}>{device.id}</Text>
+                  {device.serviceUUIDs && device.serviceUUIDs.length > 0 && (
+                    <Text style={styles.deviceServices}>
+                      Services: {device.serviceUUIDs.join(', ')}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              ))
+            ) : (
+              <View style={styles.noDevicesContainer}>
+                <Text style={styles.noDevicesText}>
+                  {isScanning ? 'Scanning for devices...' : 'No devices found'}
+                </Text>
+                {!isScanning && permissionStatus === 'granted' && (
+                  <Text style={styles.noDevicesHint}>
+                    Make sure your printer is in pairing mode and try scanning
+                  </Text>
+                )}
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      </View>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+    backgroundColor: '#f3f4f6',
+  },
+  mainLayout: {
+    flex: 1,
+    flexDirection: 'row',
     padding: 20,
-    alignItems: 'center',
+    gap: 20,
+  },
+  leftColumn: {
+    width: 350,
+    gap: 16,
+  },
+  rightColumn: {
+    flex: 1,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 8,
   },
   selectedPrinterContainer: {
     backgroundColor: '#E8F5E8',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 20,
-    width: '100%',
+    padding: 16,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: '#4CAF50',
   },
   selectedPrinterTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
     color: '#2E7D32',
-    marginBottom: 8,
+    marginBottom: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   selectedPrinterInfo: {
     marginBottom: 10,
@@ -629,40 +667,65 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 14,
   },
-  button: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+  statusCard: {
+    backgroundColor: '#ffffff',
     borderRadius: 8,
-    minWidth: 200,
-    alignItems: 'center',
-    marginBottom: 10,
+    padding: 16,
+    borderLeftWidth: 4,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
   },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  statusContainer: {
+  statusHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 8,
+    gap: 8,
   },
-  statusLabel: {
-    fontSize: 16,
-    color: '#333',
+  statusTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6b7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   statusText: {
     fontSize: 16,
     fontWeight: 'bold',
+    marginLeft: 28,
   },
-  devicesList: {
-    width: '100%',
+  scanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 8,
+    gap: 8,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
   },
-  devicesTitle: {
+  scanButtonText: {
+    color: '#ffffff',
     fontSize: 16,
     fontWeight: 'bold',
-    marginBottom: 10,
-    color: '#333',
+  },
+  devicesTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    color: '#1f2937',
+  },
+  devicesListContainer: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 12,
   },
   deviceItem: {
     backgroundColor: '#F5F5F5',

@@ -160,7 +160,7 @@ const QRManagementScreen = ({ navigation, route }) => {
           <Image source={{ uri: qrUri }} style={styles.previewImage} />
         ) : (
           <View style={styles.placeholderContainer}>
-            <Ionicons name="qr-code" size={80} color="#9ca3af" />
+            <Ionicons name="qr-code" size={64} color="#9ca3af" />
             <Text style={styles.placeholderText}>No QR code uploaded</Text>
           </View>
         )}
@@ -203,67 +203,91 @@ const QRManagementScreen = ({ navigation, route }) => {
           <Ionicons name="chevron-back" size={24} color="#1f2937" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>QR Code Management</Text>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.maintenanceButton}
+            onPress={() => navigation.navigate('Maintenance')}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="construct" size={20} color="#ffffff" />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <View style={styles.content}>
         <Text style={styles.subtitle}>
           Upload and manage your payment QR codes
         </Text>
 
         {loading && (
-          <View style={styles.loadingContainer}>
+          <View style={styles.loadingOverlay}>
             <ActivityIndicator size="large" color="#2563eb" />
             <Text style={styles.loadingText}>Processing...</Text>
           </View>
         )}
 
-        <View style={styles.settingsCard}>
-          <Text style={styles.settingsTitle}>Printer Settings</Text>
-          <View style={styles.settingRow}>
-            <View style={styles.settingInfo}>
-              <Ionicons name="print" size={20} color="#6b7280" />
-              <View style={styles.settingText}>
-                <Text style={styles.settingLabel}>Require Printer for Checkout</Text>
-                <Text style={styles.settingDescription}>
-                  Toggle this off if you want to allow checkout without a printer
-                </Text>
+        <View style={styles.mainLayout}>
+          {/* Left Column - Settings */}
+          <View style={styles.leftColumn}>
+            <View style={styles.settingsCard}>
+              <Text style={styles.settingsTitle}>Printer Settings</Text>
+              <View style={styles.settingRow}>
+                <View style={styles.settingInfo}>
+                  <Ionicons name="print" size={20} color="#6b7280" />
+                  <View style={styles.settingText}>
+                    <Text style={styles.settingLabel}>Require Printer for Checkout</Text>
+                    <Text style={styles.settingDescription}>
+                      Toggle this off if you want to allow checkout without a printer
+                    </Text>
+                  </View>
+                </View>
+                <Switch
+                  value={printerRequired}
+                  onValueChange={savePrinterSetting}
+                  trackColor={{ false: '#e5e7eb', true: '#2563eb' }}
+                  thumbColor={printerRequired ? '#ffffff' : '#ffffff'}
+                />
               </View>
             </View>
-            <Switch
-              value={printerRequired}
-              onValueChange={savePrinterSetting}
-              trackColor={{ false: '#e5e7eb', true: '#2563eb' }}
-              thumbColor={printerRequired ? '#ffffff' : '#ffffff'}
-            />
+
+            <View style={styles.infoCard}>
+              <View style={styles.infoHeader}>
+                <Ionicons name="information-circle" size={20} color="#2563eb" />
+                <Text style={styles.infoTitle}>Storage Information</Text>
+              </View>
+              <Text style={styles.infoText}>
+                QR codes are stored locally on your device. Make sure to backup your QR codes regularly.
+              </Text>
+            </View>
+          </View>
+
+          {/* Right Column - QR Cards */}
+          <View style={styles.rightColumn}>
+            {!method && (
+              <View style={styles.qrCardsRow}>
+                <View style={styles.qrCardWrapper}>
+                  <QRCard paymentType="Gcash" qrUri={qrImages.Gcash} />
+                </View>
+                <View style={styles.qrCardWrapper}>
+                  <QRCard paymentType="BPI" qrUri={qrImages.BPI} />
+                </View>
+              </View>
+            )}
+
+            {method === "Gcash" && (
+              <View style={styles.qrCardCentered}>
+                <QRCard paymentType="Gcash" qrUri={qrImages.Gcash} />
+              </View>
+            )}
+
+            {method === "BPI" && (
+              <View style={styles.qrCardCentered}>
+                <QRCard paymentType="BPI" qrUri={qrImages.BPI} />
+              </View>
+            )}
           </View>
         </View>
-
-        {!method && (
-          <>
-            <QRCard paymentType="Gcash" qrUri={qrImages.Gcash} />
-            <QRCard paymentType="BPI" qrUri={qrImages.BPI} />
-          </>
-        )}
-
-        {method === "Gcash" && (
-          <QRCard paymentType="Gcash" qrUri={qrImages.Gcash} />
-        )}
-
-        {method === "BPI" && (
-          <QRCard paymentType="BPI" qrUri={qrImages.BPI} />
-        )}
-        <TouchableOpacity onPress={()=>navigation.navigate('Maintenance')}>
-          <Ionicons name="hammer-outline" size={20} color="#6b7280" />
-        </TouchableOpacity>
-
-        <View style={styles.infoContainer}>
-          <Ionicons name="information-circle" size={20} color="#6b7280" />
-          <Text style={styles.infoText}>
-            QR codes are stored locally on your device. Make sure to backup your QR codes regularly.
-          </Text>
-        </View>
-
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 };
@@ -276,8 +300,9 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    justifyContent: 'space-between',
+    padding:30,
+    backgroundColor: '#ffffff',
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
   },
@@ -289,37 +314,84 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: '#1f2937',
+    flex: 1,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  maintenanceButton: {
+    backgroundColor: '#8b5cf6',
+    padding: 10,
+    borderRadius: 8,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
   },
   content: {
     flex: 1,
-    paddingHorizontal: 16,
+    padding: 20,
+    backgroundColor: '#f3f4f6',
   },
   subtitle: {
     fontSize: 16,
     color: '#6b7280',
-    marginTop: 16,
-    marginBottom: 24,
+    marginBottom: 20,
     textAlign: 'center',
   },
-  loadingContainer: {
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
     alignItems: 'center',
-    paddingVertical: 20,
+    justifyContent: 'center',
+    zIndex: 1000,
   },
   loadingText: {
     marginTop: 8,
     color: '#6b7280',
     fontSize: 14,
   },
+  mainLayout: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 20,
+  },
+  leftColumn: {
+    width: 400,
+    gap: 16,
+  },
+  rightColumn: {
+    flex: 1,
+  },
+  qrCardsRow: {
+    flexDirection: 'row',
+    gap: 20,
+    height: '50%',
+  },
+  qrCardWrapper: {
+    flex: 1,
+  },
+  qrCardCentered: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100%',
+  },
   qrCard: {
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#ffffff',
     borderRadius: 12,
     padding: 20,
-    marginBottom: 20,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
+    height: '100%',
   },
   cardTitle: {
     fontSize: 18,
@@ -333,15 +405,15 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   previewImage: {
-    width: 200,
-    height: 200,
+    width: 160,
+    height: 160,
     borderRadius: 8,
   },
   placeholderContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    width: 200,
-    height: 200,
+    width: 160,
+    height: 160,
     backgroundColor: '#f3f4f6',
     borderRadius: 8,
     borderWidth: 2,
@@ -386,27 +458,42 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 6,
   },
-  infoContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#f0f9ff',
+  infoCard: {
+    backgroundColor: '#ffffff',
     padding: 16,
     borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#2563eb',
     marginTop: 20,
-    marginBottom: 40,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+  },
+  infoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  infoTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2563eb',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   infoText: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 14,
+    fontSize: 13,
     color: '#6b7280',
-    lineHeight: 20,
+    lineHeight: 18,
+    marginLeft: 28,
   },
   settingsCard: {
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#ffffff',
     borderRadius: 12,
     padding: 20,
-    marginBottom: 20,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },

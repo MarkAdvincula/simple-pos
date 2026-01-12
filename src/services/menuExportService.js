@@ -42,15 +42,34 @@ class MenuExportService {
 
   // Generate CSV content from menu data
   generateMenuCSV(menuData) {
-    const headers = ['Category', 'Item Name', 'Price'];
+    const headers = ['Category', 'Category Order', 'Item Name', 'Price', 'Option Groups'];
     let csvContent = headers.join(',') + '\n';
+
+    // Create a map of option group IDs to names
+    const optionGroupMap = {};
+    if (menuData.optionGroups) {
+      menuData.optionGroups.forEach(group => {
+        optionGroupMap[group.id] = group.name;
+      });
+    }
 
     menuData.categories.forEach(category => {
       category.items.forEach(item => {
+        // Get option group names
+        let optionGroupsStr = '';
+        if (item.optionGroupIds && item.optionGroupIds.length > 0) {
+          const groupNames = item.optionGroupIds
+            .map(id => optionGroupMap[id])
+            .filter(name => name !== undefined);
+          optionGroupsStr = groupNames.join('; ');
+        }
+
         const row = [
           `"${category.name}"`,
+          category.displayOrder || 0,
           `"${item.name}"`,
-          item.price
+          item.price,
+          `"${optionGroupsStr}"`
         ];
         csvContent += row.join(',') + '\n';
       });

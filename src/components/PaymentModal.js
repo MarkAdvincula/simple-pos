@@ -6,17 +6,31 @@ import {
   TouchableOpacity,
   StyleSheet,
   Modal,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-const PaymentModal = ({ 
-  visible, 
-  paymentDetails, 
-  isPrinting, 
-  connectedPrinter, 
-  onClose, 
-  onPrinterSettings 
+const PaymentModal = ({
+  visible,
+  paymentDetails,
+  cart = [],
+  isPrinting,
+  connectedPrinter,
+  onClose,
+  onPrinterSettings
 }) => {
+  // Helper function to calculate item total with options
+  const calculateItemTotal = (item) => {
+    let total = item.price;
+    if (item.selectedOptions) {
+      Object.values(item.selectedOptions).forEach(choices => {
+        choices.forEach(choice => {
+          total += choice.price;
+        });
+      });
+    }
+    return total * item.quantity;
+  };
   return (
     <Modal
       animationType="fade"
@@ -38,29 +52,63 @@ const PaymentModal = ({
           </View>
 
           <View style={styles.modalBody}>
-            <View style={styles.paymentDetailRow}>
-              <Text style={styles.paymentDetailLabel}>Payment Method:</Text>
-              <Text style={styles.paymentDetailValue}>{paymentDetails.method}</Text>
-            </View>
+            {/* Items List */}
+            {cart && cart.length > 0 && (
+              <View style={styles.itemsSection}>
+                <Text style={styles.sectionTitle}>Items Purchased</Text>
+                <ScrollView style={styles.itemsList} nestedScrollEnabled={true}>
+                  {cart.map((item, index) => (
+                    <View key={index} style={styles.cartItem}>
+                      <View style={styles.itemHeader}>
+                        <Text style={styles.itemName}>{item.name}</Text>
+                        <Text style={styles.itemTotal}>₱{calculateItemTotal(item).toFixed(2)}</Text>
+                      </View>
 
-            <View style={styles.paymentDetailRow}>
-              <Text style={styles.paymentDetailLabel}>Total:</Text>
-              <Text style={styles.paymentDetailValue}>₱{paymentDetails.total?.toFixed(2)}</Text>
-            </View>
+                      {item.selectedOptions && Object.keys(item.selectedOptions).length > 0 && (
+                        <View style={styles.optionsContainer}>
+                          {Object.entries(item.selectedOptions).map(([groupName, choices], idx) => (
+                            <Text key={idx} style={styles.optionText}>
+                              • {choices.map(c => `${c.name}${c.price > 0 ? ` (+₱${c.price.toFixed(2)})` : ''}`).join(', ')}
+                            </Text>
+                          ))}
+                        </View>
+                      )}
 
-            {paymentDetails.received && (
-              <View style={styles.paymentDetailRow}>
-                <Text style={styles.paymentDetailLabel}>Received:</Text>
-                <Text style={styles.paymentDetailValue}>₱{paymentDetails.received?.toFixed(2)}</Text>
+                      <Text style={styles.itemQuantity}>
+                        ₱{item.price.toFixed(2)} x {item.quantity}
+                      </Text>
+                    </View>
+                  ))}
+                </ScrollView>
               </View>
             )}
 
-            {paymentDetails.change !== undefined && (
+            {/* Payment Details */}
+            <View style={styles.paymentSection}>
               <View style={styles.paymentDetailRow}>
-                <Text style={styles.paymentDetailLabel}>Change:</Text>
-                <Text style={styles.changeAmount}>₱{paymentDetails.change?.toFixed(2)}</Text>
+                <Text style={styles.paymentDetailLabel}>Payment Method:</Text>
+                <Text style={styles.paymentDetailValue}>{paymentDetails.method}</Text>
               </View>
-            )}
+
+              <View style={styles.paymentDetailRow}>
+                <Text style={styles.paymentDetailLabel}>Total:</Text>
+                <Text style={styles.paymentDetailValue}>₱{paymentDetails.total?.toFixed(2)}</Text>
+              </View>
+
+              {paymentDetails.received && (
+                <View style={styles.paymentDetailRow}>
+                  <Text style={styles.paymentDetailLabel}>Received:</Text>
+                  <Text style={styles.paymentDetailValue}>₱{paymentDetails.received?.toFixed(2)}</Text>
+                </View>
+              )}
+
+              {paymentDetails.change !== undefined && (
+                <View style={styles.paymentDetailRow}>
+                  <Text style={styles.paymentDetailLabel}>Change:</Text>
+                  <Text style={styles.changeAmount}>₱{paymentDetails.change?.toFixed(2)}</Text>
+                </View>
+              )}
+            </View>
 
             <Text style={styles.transactionComplete}>Transaction completed!</Text>
 
@@ -123,7 +171,62 @@ const styles = StyleSheet.create({
   },
   modalBody: {
     width: '100%',
-    marginBottom: 24,
+  },
+  itemsSection: {
+    marginBottom: 16,
+    borderBottomWidth: 2,
+    borderBottomColor: '#e5e7eb',
+    paddingBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 12,
+  },
+  itemsList: {
+    maxHeight: 200,
+  },
+  cartItem: {
+    backgroundColor: '#f9fafb',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  itemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  itemName: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    flex: 1,
+  },
+  itemTotal: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#2563eb',
+  },
+  optionsContainer: {
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  optionText: {
+    fontSize: 12,
+    color: '#7c3aed',
+    fontStyle: 'italic',
+    marginLeft: 8,
+  },
+  itemQuantity: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 4,
+  },
+  paymentSection: {
+    marginTop: 8,
   },
   paymentDetailRow: {
     flexDirection: 'row',
@@ -153,16 +256,19 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textAlign: 'center',
     marginTop: 16,
+    marginBottom: 8,
   },
   printerStatus: {
     fontSize: 14,
     color: '#6b7280',
     textAlign: 'center',
     marginTop: 8,
+    marginBottom: 20,
   },
   modalActions: {
     flexDirection: 'row',
     gap: 12,
+    marginTop: 16,
   },
   modalButton: {
     backgroundColor: '#16a34a',

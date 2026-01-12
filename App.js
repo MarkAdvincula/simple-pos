@@ -12,6 +12,8 @@ import RecordsScreen from './screens/RecordsScreen';
 import MaintenanceScreen from './screens/MaintenanceScreen';
 import PrintersScreen from './screens/PrintersScreen';
 import EditTransactionScreen from './screens/EditTransactionScreen';
+import QueueScreen from './screens/QueueScreen';
+import OptionGroupsScreen from './screens/OptionGroupsScreen';
 import { Dimensions } from 'react-native';
 import { ScreenProvider, useScreen } from './src/contexts/ScreenContext';
 
@@ -24,7 +26,7 @@ export default function App() {
     <ScreenProvider>
       <NavigationContainer>
       <StatusBar style="dark" />
-      <Stack.Navigator 
+      <Stack.Navigator
         initialRouteName="Menu"
         screenOptions={{
           headerShown: false,
@@ -32,8 +34,10 @@ export default function App() {
         }}
       >
         <Stack.Screen name="Menu" component={MenuScreen} />
+        <Stack.Screen name="Queue" component={QueueScreen} />
         <Stack.Screen name="Printers" component={PrintersScreen} />
         <Stack.Screen name="Maintenance" component={MaintenanceScreen} />
+        <Stack.Screen name="OptionGroups" component={OptionGroupsScreen} />
         <Stack.Screen name="Records" component={RecordsScreen} />
         <Stack.Screen name="EditTransaction" component={EditTransactionScreen} />
         <Stack.Screen name="Payment" component={PaymentScreen} />

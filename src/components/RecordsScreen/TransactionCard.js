@@ -30,6 +30,18 @@ const TransactionCard = ({ transaction, isExpanded, onToggle }) => {
                     <View key={index} style={styles.itemRow}>
                         <View style={styles.itemInfo}>
                             <Text style={styles.itemName}>{item.item_name}</Text>
+
+                            {/* Option Groups */}
+                            {item.selectedOptions && Object.keys(item.selectedOptions).length > 0 && (
+                                <View style={styles.optionsContainer}>
+                                    {Object.entries(item.selectedOptions).map(([groupName, choices], idx) => (
+                                        <Text key={idx} style={styles.optionText}>
+                                            • {choices.map(c => `${c.name}${c.price > 0 ? ` (+₱${formatCurrency(c.price)})` : ''}`).join(', ')}
+                                        </Text>
+                                    ))}
+                                </View>
+                            )}
+
                             <Text style={styles.itemDetails}>
                                 {item.quantity}x @ ₱{formatCurrency(item.unit_price)}
                             </Text>
@@ -204,6 +216,16 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '500',
         color: '#1f2937',
+    },
+    optionsContainer: {
+        marginTop: 4,
+        marginBottom: 4,
+    },
+    optionText: {
+        fontSize: 11,
+        color: '#7c3aed',
+        fontStyle: 'italic',
+        marginLeft: 8,
     },
     itemDetails: {
         fontSize: 12,
