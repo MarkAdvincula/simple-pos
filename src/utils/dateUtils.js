@@ -19,6 +19,12 @@ export const getDateRange = (dateFilter, selectedDay, customStartDate, customEnd
             startDate = new Date(now.setHours(0, 0, 0, 0));
             endDate = new Date(now.setHours(23, 59, 59, 999));
             break;
+        case 'yesterday':
+            const yesterday = new Date(now);
+            yesterday.setDate(yesterday.getDate() - 1);
+            startDate = new Date(yesterday.setHours(0, 0, 0, 0));
+            endDate = new Date(yesterday.setHours(23, 59, 59, 999));
+            break;
         case 'day':
             startDate = new Date(selectedDay);
             startDate.setHours(0, 0, 0, 0);
@@ -87,6 +93,8 @@ export const getFilterDisplayText = (dateFilter, selectedDay, customStartDate, c
     switch (dateFilter) {
         case 'today':
             return 'Today';
+        case 'yesterday':
+            return 'Yesterday';
         case 'day':
             return selectedDay.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
         case 'week':

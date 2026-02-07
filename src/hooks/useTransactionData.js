@@ -79,8 +79,9 @@ export const useTransactionData = (dateFilter, selectedDay, customStartDate, cus
             // Convert to the format expected by the UI
             const salesRanking = topItems.map(item => ({
                 name: item.name,
-                quantity: item.quantity,
-                sales: item.sales,
+                totalQuantity: item.quantity,
+                totalRevenue: item.sales,
+                transactions: item.transactionCount,
                 category: mapping[item.name] || 'Uncategorized'
             }));
 

@@ -382,6 +382,8 @@ class ExportService {
     switch (dateFilter) {
       case 'today':
         return 'today';
+      case 'yesterday':
+        return 'yesterday';
       case 'day':
         if (selectedDay) {
           return selectedDay.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
