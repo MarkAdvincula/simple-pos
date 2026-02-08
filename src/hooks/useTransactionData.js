@@ -59,7 +59,7 @@ export const useTransactionData = (dateFilter, selectedDay, customStartDate, cus
                 total_transactions: summary.total_transactions,
                 total_sales: summary.total_sales,
                 average_sale: summary.average_sale,
-                cups_sold: summary.total_transactions // Can be refined if needed
+                cups_sold: summary.cups_sold
             });
         } catch (error) {
             console.error('Error loading summary:', error);

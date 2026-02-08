@@ -945,16 +945,27 @@ class DatabaseService {
                     AVG(CASE WHEN status != 'VOID' THEN total_amount ELSE NULL END) as average_sale,
                     COUNT(CASE WHEN status = 'VOID' THEN 1 END) as void_count,
                     MIN(transaction_datetime) as first_transaction,
-                    MAX(transaction_datetime) as last_transaction
+                    MAX(transaction_datetime) as last_transaction,
+                    COALESCE((
+                        SELECT SUM(ti.quantity)
+                        FROM transaction_items_tbl ti
+                        JOIN transactions_tbl t2 ON ti.transaction_id = t2.id
+                        LEFT JOIN items i ON ti.item_name = i.item_name
+                        LEFT JOIN categories c ON i.cid = c.id
+                        WHERE t2.transaction_datetime BETWEEN ? AND ?
+                          AND t2.status != 'VOID'
+                          AND (c.category_name IS NULL OR LOWER(c.category_name) NOT LIKE 'add%')
+                    ), 0) as cups_sold
                 FROM transactions_tbl
                 WHERE transaction_datetime BETWEEN ? AND ?
-            `, [startDate, endDate]);
+            `, [startDate, endDate, startDate, endDate]);
 
             return {
                 total_transactions: summary.total_transactions || 0,
                 total_sales: summary.total_sales || 0,
                 average_sale: summary.average_sale || 0,
                 void_count: summary.void_count || 0,
+                cups_sold: summary.cups_sold || 0,
                 first_transaction: summary.first_transaction,
                 last_transaction: summary.last_transaction
             };
