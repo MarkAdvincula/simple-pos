@@ -29,6 +29,7 @@ const DateFilterModal = ({
     const filterOptions = [
         { key: 'all', label: 'All Time', icon: 'infinite-outline' },
         { key: 'today', label: 'Today', icon: 'today-outline' },
+        { key: 'yesterday', label: 'Yesterday', icon: 'time-outline' },
         { key: 'day', label: 'Select Day', icon: 'calendar-outline' },
         { key: 'week', label: 'This Week', icon: 'calendar-outline' },
         { key: 'month', label: 'This Month', icon: 'calendar-outline' },
@@ -68,7 +69,7 @@ const DateFilterModal = ({
                                 >
                                     <Ionicons
                                         name={option.icon}
-                                        size={20}
+                                        size={16}
                                         color={dateFilter === option.key ? '#2563eb' : '#6b7280'}
                                     />
                                     <Text style={[
@@ -77,9 +78,6 @@ const DateFilterModal = ({
                                     ]}>
                                         {option.label}
                                     </Text>
-                                    {dateFilter === option.key && (
-                                        <Ionicons name="checkmark" size={20} color="#2563eb" />
-                                    )}
                                 </TouchableOpacity>
                             ))}
                         </View>
@@ -207,27 +205,29 @@ const styles = StyleSheet.create({
         padding: 4,
     },
     filterOptionsContainer: {
-        paddingVertical: 20,
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        paddingVertical: 16,
+        gap: 8,
     },
     filterOption: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 16,
-        paddingHorizontal: 16,
-        borderRadius: 12,
-        marginBottom: 8,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderRadius: 20,
         backgroundColor: '#f9fafb',
-        gap: 12,
+        borderWidth: 1,
+        borderColor: '#e5e7eb',
+        gap: 6,
     },
     filterOptionActive: {
         backgroundColor: '#eff6ff',
-        borderWidth: 1,
         borderColor: '#3b82f6',
     },
     filterOptionText: {
-        fontSize: 16,
+        fontSize: 14,
         color: '#6b7280',
-        flex: 1,
         fontWeight: '500',
     },
     filterOptionTextActive: {
@@ -248,19 +248,21 @@ const styles = StyleSheet.create({
         textAlign: 'center',
     },
     dateRangeContainer: {
-        gap: 12,
+        flexDirection: 'row',
+        justifyContent: 'center',
+        gap: 10,
         marginBottom: 20,
     },
     dateButton: {
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: '#f3f4f6',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
+        paddingHorizontal: 10,
+        paddingVertical: 10,
         borderRadius: 8,
         borderWidth: 1,
         borderColor: '#d1d5db',
-        gap: 8,
+        gap: 4,
     },
     dateButtonText: {
         fontSize: 14,

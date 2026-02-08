@@ -5,6 +5,12 @@ class DatabaseService {
         this.db = null;
         this.initialized = false;
         this.initPromise = null;
+        // Cache for query results
+        this.cache = {
+            transactions: null,
+            lastCacheTime: null,
+            cacheTimeout: 30000 // 30 seconds
+        };
     }
 
     async init() {
@@ -281,6 +287,45 @@ class DatabaseService {
                     FOREIGN KEY (option_group_id) REFERENCES option_groups (id)
                 );
             `);
+
+            // ==================== PERFORMANCE INDEXES ====================
+            // Create indexes for better query performance
+            try {
+                // Index on transaction_datetime for date range queries and sorting
+                await this.db.execAsync(`
+                    CREATE INDEX IF NOT EXISTS idx_transactions_datetime
+                    ON transactions_tbl(transaction_datetime DESC);
+                `);
+
+                // Index on transaction status for filtering
+                await this.db.execAsync(`
+                    CREATE INDEX IF NOT EXISTS idx_transactions_status
+                    ON transactions_tbl(status);
+                `);
+
+                // Composite index for date range + status queries
+                await this.db.execAsync(`
+                    CREATE INDEX IF NOT EXISTS idx_transactions_datetime_status
+                    ON transactions_tbl(transaction_datetime DESC, status);
+                `);
+
+                // Index on transaction_items transaction_id for faster JOINs
+                await this.db.execAsync(`
+                    CREATE INDEX IF NOT EXISTS idx_transaction_items_transaction_id
+                    ON transaction_items_tbl(transaction_id);
+                `);
+
+                // Index on item_name for top selling items aggregation
+                await this.db.execAsync(`
+                    CREATE INDEX IF NOT EXISTS idx_transaction_items_item_name
+                    ON transaction_items_tbl(item_name);
+                `);
+
+                console.log('✓ Performance indexes created successfully');
+            } catch (indexError) {
+                console.log('Some indexes might already exist:', indexError.message);
+            }
+            // ==================== END PERFORMANCE INDEXES ====================
 
 
         } catch (error) {
@@ -582,6 +627,9 @@ class DatabaseService {
                 );
             }
 
+            // Clear cache after creating transaction
+            this.clearTransactionCache();
+
             return transactionId;
         } catch (error) {
             console.error('Error adding transaction:', error);
@@ -698,6 +746,271 @@ class DatabaseService {
         }
     }
 
+    // ==================== PERFORMANCE OPTIMIZED METHODS ====================
+
+    /**
+     * Clear transaction cache - call this after creating/updating/deleting transactions
+     */
+    clearTransactionCache() {
+        this.cache.transactions = null;
+        this.cache.lastCacheTime = null;
+    }
+
+    /**
+     * Check if cache is valid
+     */
+    isCacheValid() {
+        if (!this.cache.transactions || !this.cache.lastCacheTime) {
+            return false;
+        }
+        return (Date.now() - this.cache.lastCacheTime) < this.cache.cacheTimeout;
+    }
+
+    /**
+     * OPTIMIZED: Get transactions with pagination - FIXES N+1 QUERY PROBLEM
+     * Uses a single JOIN query instead of multiple separate queries
+     */
+    async getTransactionsPaginated(limit = 50, offset = 0, options = {}) {
+        await this.init();
+
+        try {
+            const { startDate, endDate, status } = options;
+
+            // Build WHERE clause
+            let whereConditions = [];
+            let params = [];
+
+            if (startDate && endDate) {
+                whereConditions.push('t.transaction_datetime BETWEEN ? AND ?');
+                params.push(startDate, endDate);
+                // Debug logging
+                console.log('🔍 Date filter applied:', {
+                    startDate,
+                    endDate,
+                    filter: options.filterName || 'unknown'
+                });
+            }
+
+            if (status) {
+                whereConditions.push('t.status = ?');
+                params.push(status);
+            }
+
+            const whereClause = whereConditions.length > 0
+                ? `WHERE ${whereConditions.join(' AND ')}`
+                : '';
+
+            // Get paginated transaction IDs first
+            const transactionIds = await this.db.getAllAsync(`
+                SELECT t.id
+                FROM transactions_tbl t
+                ${whereClause}
+                ORDER BY t.transaction_datetime DESC
+                LIMIT ? OFFSET ?
+            `, [...params, limit, offset]);
+
+            console.log(`📊 Found ${transactionIds.length} transactions for current page`);
+
+            if (transactionIds.length === 0) {
+                // Debug: Show a sample transaction to verify date format
+                const sampleTxn = await this.db.getFirstAsync(`
+                    SELECT transaction_datetime FROM transactions_tbl
+                    ORDER BY transaction_datetime DESC LIMIT 1
+                `);
+                if (sampleTxn) {
+                    console.log('📅 Sample transaction datetime:', sampleTxn.transaction_datetime);
+                }
+                return [];
+            }
+
+            const ids = transactionIds.map(t => t.id);
+            const placeholders = ids.map(() => '?').join(',');
+
+            // Get all transactions and their items in one query using JOIN
+            const rows = await this.db.getAllAsync(`
+                SELECT
+                    t.id as transaction_id,
+                    t.transaction_datetime,
+                    t.total_amount,
+                    t.payment_method,
+                    t.status,
+                    t.created_at,
+                    ti.id as item_id,
+                    ti.item_name,
+                    ti.unit_price,
+                    ti.quantity,
+                    ti.line_total,
+                    ti.selected_options
+                FROM transactions_tbl t
+                LEFT JOIN transaction_items_tbl ti ON t.id = ti.transaction_id
+                WHERE t.id IN (${placeholders})
+                ORDER BY t.transaction_datetime DESC, ti.id ASC
+            `, ids);
+
+            // Group items by transaction
+            const transactionsMap = new Map();
+
+            for (const row of rows) {
+                const transactionId = row.transaction_id;
+
+                if (!transactionsMap.has(transactionId)) {
+                    transactionsMap.set(transactionId, {
+                        id: row.transaction_id,
+                        transaction_datetime: row.transaction_datetime,
+                        total_amount: row.total_amount,
+                        payment_method: row.payment_method,
+                        status: row.status,
+                        created_at: row.created_at,
+                        items: []
+                    });
+                }
+
+                // Add item if it exists (LEFT JOIN may have null items for transactions with no items)
+                if (row.item_id) {
+                    transactionsMap.get(transactionId).items.push({
+                        id: row.item_id,
+                        item_name: row.item_name,
+                        unit_price: row.unit_price,
+                        quantity: row.quantity,
+                        line_total: row.line_total,
+                        selectedOptions: row.selected_options ? JSON.parse(row.selected_options) : null
+                    });
+                }
+            }
+
+            return Array.from(transactionsMap.values());
+        } catch (error) {
+            console.error('Error getting paginated transactions:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * OPTIMIZED: Get transaction count with optional filters
+     */
+    async getTransactionCount(options = {}) {
+        await this.init();
+
+        try {
+            const { startDate, endDate, status } = options;
+
+            let whereConditions = [];
+            let params = [];
+
+            if (startDate && endDate) {
+                whereConditions.push('transaction_datetime BETWEEN ? AND ?');
+                params.push(startDate, endDate);
+            }
+
+            if (status) {
+                whereConditions.push('status = ?');
+                params.push(status);
+            }
+
+            const whereClause = whereConditions.length > 0
+                ? `WHERE ${whereConditions.join(' AND ')}`
+                : '';
+
+            const result = await this.db.getFirstAsync(`
+                SELECT COUNT(*) as count
+                FROM transactions_tbl
+                ${whereClause}
+            `, params);
+
+            return result.count;
+        } catch (error) {
+            console.error('Error getting transaction count:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * OPTIMIZED: Get transactions by date range with pagination
+     */
+    async getTransactionsByDateRange(startDate, endDate, limit = 50, offset = 0, status = null) {
+        return this.getTransactionsPaginated(limit, offset, { startDate, endDate, status });
+    }
+
+    /**
+     * OPTIMIZED: Get summary data with SQL aggregation (no client-side processing)
+     */
+    async getSummaryByDateRange(startDate, endDate) {
+        await this.init();
+
+        try {
+            const summary = await this.db.getFirstAsync(`
+                SELECT
+                    COUNT(*) as total_transactions,
+                    SUM(CASE WHEN status != 'VOID' THEN total_amount ELSE 0 END) as total_sales,
+                    AVG(CASE WHEN status != 'VOID' THEN total_amount ELSE NULL END) as average_sale,
+                    COUNT(CASE WHEN status = 'VOID' THEN 1 END) as void_count,
+                    MIN(transaction_datetime) as first_transaction,
+                    MAX(transaction_datetime) as last_transaction,
+                    COALESCE((
+                        SELECT SUM(ti.quantity)
+                        FROM transaction_items_tbl ti
+                        JOIN transactions_tbl t2 ON ti.transaction_id = t2.id
+                        LEFT JOIN items i ON ti.item_name = i.item_name
+                        LEFT JOIN categories c ON i.cid = c.id
+                        WHERE t2.transaction_datetime BETWEEN ? AND ?
+                          AND t2.status != 'VOID'
+                          AND (c.category_name IS NULL OR LOWER(c.category_name) NOT LIKE 'add%')
+                    ), 0) as cups_sold
+                FROM transactions_tbl
+                WHERE transaction_datetime BETWEEN ? AND ?
+            `, [startDate, endDate, startDate, endDate]);
+
+            return {
+                total_transactions: summary.total_transactions || 0,
+                total_sales: summary.total_sales || 0,
+                average_sale: summary.average_sale || 0,
+                void_count: summary.void_count || 0,
+                cups_sold: summary.cups_sold || 0,
+                first_transaction: summary.first_transaction,
+                last_transaction: summary.last_transaction
+            };
+        } catch (error) {
+            console.error('Error getting summary by date range:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * OPTIMIZED: Get top selling items with SQL aggregation
+     */
+    async getTopSellingItems(startDate, endDate, limit = 10) {
+        await this.init();
+
+        try {
+            const topItems = await this.db.getAllAsync(`
+                SELECT
+                    ti.item_name,
+                    SUM(ti.quantity) as total_quantity,
+                    SUM(ti.line_total) as total_sales,
+                    COUNT(DISTINCT ti.transaction_id) as transaction_count
+                FROM transaction_items_tbl ti
+                INNER JOIN transactions_tbl t ON ti.transaction_id = t.id
+                WHERE t.transaction_datetime BETWEEN ? AND ?
+                    AND t.status != 'VOID'
+                GROUP BY ti.item_name
+                ORDER BY total_quantity DESC
+                LIMIT ?
+            `, [startDate, endDate, limit]);
+
+            return topItems.map(item => ({
+                name: item.item_name,
+                quantity: item.total_quantity,
+                sales: item.total_sales,
+                transactionCount: item.transaction_count
+            }));
+        } catch (error) {
+            console.error('Error getting top selling items:', error);
+            throw error;
+        }
+    }
+
+    // ==================== END PERFORMANCE OPTIMIZED METHODS ====================
+
     async getDailySummary(date) {
         await this.init();
 
@@ -728,6 +1041,9 @@ class DatabaseService {
         try {
             await this.db.runAsync('DELETE FROM transaction_items_tbl WHERE transaction_id = ?', [id]);
             await this.db.runAsync('DELETE FROM transactions_tbl WHERE id = ?', [id]);
+
+            // Clear cache after deleting transaction
+            this.clearTransactionCache();
         } catch (error) {
             console.error('Error deleting transaction:', error);
             throw error;
@@ -742,6 +1058,9 @@ class DatabaseService {
                 'UPDATE transactions_tbl SET status = ? WHERE id = ?',
                 ['VOID', id]
             );
+
+            // Clear cache after voiding transaction
+            this.clearTransactionCache();
         } catch (error) {
             console.error('Error voiding transaction:', error);
             throw error;
@@ -756,6 +1075,9 @@ class DatabaseService {
                 'UPDATE transactions_tbl SET status = ? WHERE id = ?',
                 [status, id]
             );
+
+            // Clear cache after updating transaction status
+            this.clearTransactionCache();
         } catch (error) {
             console.error('Error updating transaction status:', error);
             throw error;

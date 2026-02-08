@@ -16,6 +16,7 @@ export const useDateFilter = (initialFilter = 'today') => {
 
     const handleDateFilterChange = useCallback((filter) => {
         setDateFilter(filter);
+        // Keep modal open only for filters that need additional input
         if (filter !== 'custom' && filter !== 'day') {
             setShowDateFilterModal(false);
         }

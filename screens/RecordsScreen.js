@@ -80,28 +80,51 @@ const RecordsScreen = ({ navigation }) => {
         showAddOnsInTopSales
     ]);
 
-    // Load paginated transactions
+    // OPTIMIZED: Load paginated transactions directly from database
     useEffect(() => {
         const loadPaginatedTransactions = async () => {
-            const allTransactions = await databaseService.getTransactions();
-            const filteredTransactions = filterTransactionsByDate(
-                allTransactions,
-                dateFilterHook.dateFilter,
-                dateFilterHook.selectedDay,
-                dateFilterHook.customStartDate,
-                dateFilterHook.customEndDate
-            );
-            const completedTransactions = filterCompletedTransactions(filteredTransactions);
+            try {
+                // Get date range for SQL query
+                const { startDate, endDate } = require('../src/utils/dateUtils').getDateRangeFromFilter(
+                    dateFilterHook.dateFilter,
+                    dateFilterHook.selectedDay,
+                    dateFilterHook.customStartDate,
+                    dateFilterHook.customEndDate
+                );
 
-            const paginatedResult = pagination.getAllPagesData(completedTransactions);
+                // Calculate offset based on current page
+                const offset = (pagination.page - 1) * ITEMS_PER_PAGE;
 
-            const formattedTransactions = paginatedResult.items.map(transaction => ({
-                ...transaction,
-                transaction_datetime: new Date(transaction.transaction_datetime)
-            }));
+                // Load transactions with database-level pagination and filtering
+                const transactions = await databaseService.getTransactionsByDateRange(
+                    startDate,
+                    endDate,
+                    ITEMS_PER_PAGE,
+                    offset,
+                    'COMPLETED'
+                );
 
-            setItems(formattedTransactions);
-            pagination.setHasMoreData(paginatedResult.hasMore);
+                // Get total count for pagination
+                const totalCount = await databaseService.getTransactionCount({
+                    startDate,
+                    endDate,
+                    status: 'COMPLETED'
+                });
+
+                // Format transactions
+                const formattedTransactions = transactions.map(transaction => ({
+                    ...transaction,
+                    transaction_datetime: new Date(transaction.transaction_datetime)
+                }));
+
+                setItems(formattedTransactions);
+
+                // Update pagination state
+                const hasMore = (offset + transactions.length) < totalCount;
+                pagination.setHasMoreData(hasMore);
+            } catch (error) {
+                console.error('Error loading paginated transactions:', error);
+            }
         };
 
         if (!loading) {

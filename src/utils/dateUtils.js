@@ -19,6 +19,12 @@ export const getDateRange = (dateFilter, selectedDay, customStartDate, customEnd
             startDate = new Date(now.setHours(0, 0, 0, 0));
             endDate = new Date(now.setHours(23, 59, 59, 999));
             break;
+        case 'yesterday':
+            const yesterday = new Date(now);
+            yesterday.setDate(yesterday.getDate() - 1);
+            startDate = new Date(yesterday.setHours(0, 0, 0, 0));
+            endDate = new Date(yesterday.setHours(23, 59, 59, 999));
+            break;
         case 'day':
             startDate = new Date(selectedDay);
             startDate.setHours(0, 0, 0, 0);
@@ -87,6 +93,8 @@ export const getFilterDisplayText = (dateFilter, selectedDay, customStartDate, c
     switch (dateFilter) {
         case 'today':
             return 'Today';
+        case 'yesterday':
+            return 'Yesterday';
         case 'day':
             return selectedDay.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
         case 'week':
@@ -98,4 +106,50 @@ export const getFilterDisplayText = (dateFilter, selectedDay, customStartDate, c
         default:
             return 'All Time';
     }
+};
+
+/**
+ * Convert Date to ISO datetime format (YYYY-MM-DDTHH:MM:SS.mmmZ)
+ * FIX: Use ISO format to match how transactions are stored in database
+ * @param {Date} date - Date to convert
+ * @returns {string} ISO formatted datetime string
+ */
+export const toSQLDateTime = (date) => {
+    // Use ISO format since transactions are stored with toISOString()
+    // This ensures proper comparison in SQLite BETWEEN clauses
+    return date.toISOString();
+};
+
+/**
+ * Get date range in SQL format for database queries
+ * OPTIMIZED for direct use with database queries
+ * @param {string} dateFilter - Filter type ('all', 'today', 'day', 'week', 'month', 'custom')
+ * @param {Date} selectedDay - Selected day for 'day' filter
+ * @param {Date} customStartDate - Custom start date for 'custom' filter
+ * @param {Date} customEndDate - Custom end date for 'custom' filter
+ * @returns {object} Object with startDate and endDate in SQL format
+ */
+export const getDateRangeFromFilter = (dateFilter, selectedDay, customStartDate, customEndDate) => {
+    // For 'all' filter, use a very wide date range in ISO format
+    if (dateFilter === 'all') {
+        return {
+            startDate: '2000-01-01T00:00:00.000Z',
+            endDate: '2099-12-31T23:59:59.999Z'
+        };
+    }
+
+    const dateRange = getDateRange(dateFilter, selectedDay, customStartDate, customEndDate);
+
+    if (!dateRange) {
+        // Default to wide range
+        return {
+            startDate: '2000-01-01T00:00:00.000Z',
+            endDate: '2099-12-31T23:59:59.999Z'
+        };
+    }
+
+    return {
+        startDate: toSQLDateTime(dateRange.startDate),
+        endDate: toSQLDateTime(dateRange.endDate)
+    };
 };
