@@ -21,6 +21,8 @@ const MenuScreen = ({ navigation, route }) => {
   const [menu, setMenu] = useState({});
   const [loading, setLoading] = useState(true);
   const [queueCount, setQueueCount] = useState(0);
+  const [activeQueueId, setActiveQueueId] = useState(null);
+  const [activeQueueName, setActiveQueueName] = useState(null);
   const [showQueueModal, setShowQueueModal] = useState(false);
   const [queueName, setQueueName] = useState('');
 
@@ -48,8 +50,10 @@ const MenuScreen = ({ navigation, route }) => {
       // Handle loaded cart from Queue screen
       if (route.params?.loadedCart) {
         setCart(route.params.loadedCart);
+        setActiveQueueId(route.params.loadedQueueId || null);
+        setActiveQueueName(route.params.loadedQueueName || null);
         // Clear the param to prevent reloading on next focus
-        navigation.setParams({ loadedCart: undefined });
+        navigation.setParams({ loadedCart: undefined, loadedQueueId: undefined, loadedQueueName: undefined });
       }
     }, [route.params?.loadedCart])
   );
@@ -176,7 +180,11 @@ const MenuScreen = ({ navigation, route }) => {
     setCart(prevCart => prevCart.filter((_, i) => i !== index));
   }, []);
 
-  const clearCart = useCallback(() => setCart([]), []);
+  const clearCart = useCallback(() => {
+    setCart([]);
+    setActiveQueueId(null);
+    setActiveQueueName(null);
+  }, []);
 
   const getTotalPrice = useMemo(() => {
     return cart.reduce((total, item) => {
@@ -279,8 +287,9 @@ const MenuScreen = ({ navigation, route }) => {
   };
 
   const handleProceedToPayment = useCallback(() => {
-    navigation.navigate('Payment', { cart, total: getTotalPrice });
-  }, [cart, getTotalPrice, navigation]);
+    navigation.navigate('Payment', { cart, total: getTotalPrice, queueId: activeQueueId });
+    setActiveQueueId(null);
+  }, [cart, getTotalPrice, navigation, activeQueueId]);
 
   const showSales = useCallback(() => {
     navigation.navigate('Records');
@@ -529,6 +538,12 @@ const MenuScreen = ({ navigation, route }) => {
               </TouchableOpacity>
             )}
           </View>
+          {activeQueueName && (
+            <View style={styles.queueBanner}>
+              <Ionicons name="create-outline" size={14} color="#2563eb" />
+              <Text style={styles.queueBannerText}>Editing: {activeQueueName}</Text>
+            </View>
+          )}
 
           <View style={styles.cartContent}>
             <ScrollView
@@ -844,6 +859,23 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: '#1f2937',
+  },
+  queueBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 10,
+    gap: 6,
+  },
+  queueBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#2563eb',
   },
   cartContent: {
     flex: 1,

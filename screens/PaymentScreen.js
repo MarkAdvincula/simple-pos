@@ -11,16 +11,17 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-// Services  
+// Services
 import transactionService from '../src/services/transactionService';
 import printerService from '../src/services/printerService';
+import databaseService from '../src/services/database';
 
 // Components
 import PaymentModal from '../src/components/PaymentModal';
 import PaymentCash from '../src/components/PaymentCash';
 
 const PaymentScreen = ({ route, navigation }) => {
-  const { total, cart } = route.params;
+  const { total, cart, queueId } = route.params;
   const [showCashKeypad, setShowCashKeypad] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentDetails, setPaymentDetails] = useState({});
@@ -74,7 +75,7 @@ const PaymentScreen = ({ route, navigation }) => {
     setIsProcessingPayment(true);
 
     if (method === 'Gcash' || method === 'BPI') {
-      navigation.navigate('QR', { total, method, cart });
+      navigation.navigate('QR', { total, method, cart, queueId });
       setIsProcessingPayment(false);
     } else if (method === 'Cash') {
       setShowCashKeypad(true);
@@ -105,6 +106,11 @@ const PaymentScreen = ({ route, navigation }) => {
 
         // Print receipt after successful payment
         await printReceipt(receiptData);
+
+        // Delete queued order after successful payment
+        if (queueId) {
+          await databaseService.deleteQueuedOrder(queueId);
+        }
       } else {
         // Handle transaction failure
         setPaymentDetails({
@@ -152,6 +158,11 @@ const PaymentScreen = ({ route, navigation }) => {
 
         // Print receipt after successful payment
         await printReceipt(receiptData);
+
+        // Delete queued order after successful payment
+        if (queueId) {
+          await databaseService.deleteQueuedOrder(queueId);
+        }
 
         setShowPaymentModal(true);
       } else {

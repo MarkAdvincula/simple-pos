@@ -54,49 +54,34 @@ const QueueScreen = ({ navigation }) => {
   };
 
 
-  const loadToCart = async (queue) => {
-    try {
-      // Transform queue items to cart format
-      const cartItems = queue.items.map(item => ({
-        name: item.item_name,
-        price: item.unit_price,
-        quantity: item.quantity,
-        selectedOptions: item.selectedOptions || null,
-      }));
+  const loadToCart = (queue) => {
+    // Transform queue items to cart format
+    const cartItems = queue.items.map(item => ({
+      name: item.item_name,
+      price: item.unit_price,
+      quantity: item.quantity,
+      selectedOptions: item.selectedOptions || null,
+    }));
 
-      // Delete from queue
-      await databaseService.deleteQueuedOrder(queue.id);
-
-      // Navigate to Menu with cart items
-      navigation.navigate('Menu', { loadedCart: cartItems });
-    } catch (error) {
-      console.error('Error loading to cart:', error);
-      Alert.alert('Error', 'Failed to load order to cart');
-    }
+    // Navigate to Menu with cart items and queue info (delete after payment, not now)
+    navigation.navigate('Menu', { loadedCart: cartItems, loadedQueueId: queue.id, loadedQueueName: queue.queue_name });
   };
 
-  const proceedToPayment = async (queue) => {
-    try {
-      // Transform queue items to cart format
-      const cartItems = queue.items.map(item => ({
-        name: item.item_name,
-        price: item.unit_price,
-        quantity: item.quantity,
-        selectedOptions: item.selectedOptions || null,
-      }));
+  const proceedToPayment = (queue) => {
+    // Transform queue items to cart format
+    const cartItems = queue.items.map(item => ({
+      name: item.item_name,
+      price: item.unit_price,
+      quantity: item.quantity,
+      selectedOptions: item.selectedOptions || null,
+    }));
 
-      // Delete from queue
-      await databaseService.deleteQueuedOrder(queue.id);
-
-      // Navigate directly to Payment
-      navigation.navigate('Payment', {
-        cart: cartItems,
-        total: queue.total_amount,
-      });
-    } catch (error) {
-      console.error('Error proceeding to payment:', error);
-      Alert.alert('Error', 'Failed to proceed to payment');
-    }
+    // Navigate directly to Payment with queueId (delete after payment, not now)
+    navigation.navigate('Payment', {
+      cart: cartItems,
+      total: queue.total_amount,
+      queueId: queue.id,
+    });
   };
 
   const groupedOrders = groupByDate(queuedOrders);

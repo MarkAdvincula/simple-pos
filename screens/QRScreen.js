@@ -18,7 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 const QRScreen = ({ route, navigation }) => {
   const [ loading, setLoading ] = useState(false);
-  const { total, method, cart } = route.params;
+  const { total, method, cart, queueId } = route.params;
   const [qrImage, setQrImage] = useState();
   const [paymentDetails, setPaymentDetails] = useState();
   const [screenData, setScreenData] = useState(Dimensions.get('window'));
@@ -121,6 +121,11 @@ const QRScreen = ({ route, navigation }) => {
         } finally {
           setIsPrinting(false);
         }
+      }
+
+      // Delete queued order after successful payment
+      if (queueId) {
+        await databaseService.deleteQueuedOrder(queueId);
       }
 
       camera ? navigation.navigate('Camera', { total }) : navigation.navigate('Menu', { total });
